@@ -156,7 +156,7 @@ class FieldValidatorTest : public ValidatorsTest {
                                           {}));
 
     field_validators.insert(makeValidator("input",
-                                          &FieldValidator::validateInput,
+                                          &FieldValidator::validateBytecode,
                                           &FieldValidatorTest::input,
                                           {}));
 
@@ -733,11 +733,12 @@ class FieldValidatorTest : public ValidatorsTest {
           &FieldValidatorTest::amount,
           [](auto &&x) { return shared_model::interface::Amount(x); },
           amount_test_cases),
-      makeTransformValidator("peer",
-                             &FieldValidator::validatePeer,
-                             &FieldValidatorTest::peer,
-                             [](auto &&x) { return proto::Peer(x); },
-                             peer_test_cases),
+      makeTransformValidator(
+          "peer",
+          &FieldValidator::validatePeer,
+          &FieldValidatorTest::peer,
+          [](auto &&x) { return proto::Peer(x); },
+          peer_test_cases),
       makeValidator("account_name",
                     &FieldValidator::validateAccountName,
                     &FieldValidatorTest::account_name,
@@ -872,7 +873,7 @@ TEST_F(FieldValidatorTest, QueryContainerFieldsValidation) {
         // Skip oneof types
         if (field->containing_oneof()
             == iroha::protocol::Query::Payload::descriptor()->FindOneofByName(
-                   "query")) {
+                "query")) {
           return;
         }
         this->runTestCases(field);
