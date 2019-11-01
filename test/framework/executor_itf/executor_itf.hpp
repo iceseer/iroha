@@ -66,7 +66,7 @@ namespace iroha {
       iroha::ametsuchi::CommandResult executeCommandAsAccount(
           const shared_model::interface::Command &cmd,
           const std::string &account_id,
-          bool do_validation) const;
+          bool do_validation);
 
       /**
        * Execute a command as account.
@@ -82,7 +82,7 @@ namespace iroha {
       iroha::ametsuchi::CommandResult executeCommandAsAccount(
           const SpecificCommand &specific_cmd,
           const std::string &account_id,
-          bool do_validation) const {
+          bool do_validation) {
         shared_model::interface::Command::CommandVariantType variant{
             specific_cmd};
         shared_model::interface::MockCommand cmd;
@@ -97,7 +97,7 @@ namespace iroha {
        * @return Result of command execution.
        */
       template <typename T>
-      auto executeMaintenanceCommand(const T &cmd) const
+      auto executeMaintenanceCommand(const T &cmd)
           -> decltype(executeCommandAsAccount(cmd, std::string{}, false)) {
         return executeCommandAsAccount(cmd, common_constants::kAdminId, false);
       }
@@ -213,6 +213,14 @@ namespace iroha {
             executeQuery(specific_query, std::forward<Types>(args)...));
       }
 
+      /**
+       * Execute GetEngineResponse with the metadata referring to the last
+       * command executed with executeCommand method.
+       * @return Result of query execution.
+       */
+      SpecificQueryResult<shared_model::interface::EngineResponse>
+      getLastEngineResultResponse();
+
       // -------------- mock command and query factories getters ---------------
 
       /// Get mock command factory.
@@ -233,8 +241,7 @@ namespace iroha {
        */
       iroha::ametsuchi::CommandResult createRoleWithPerms(
           const std::string &role_id,
-          const shared_model::interface::RolePermissionSet &role_permissions)
-          const;
+          const shared_model::interface::RolePermissionSet &role_permissions);
 
       /**
        * Create an account.
@@ -261,8 +268,7 @@ namespace iroha {
        * @param name The created domain name.
        * @return The aggregate result of corresponding commands.
        */
-      iroha::ametsuchi::CommandResult createDomain(
-          const std::string &name) const;
+      iroha::ametsuchi::CommandResult createDomain(const std::string &name);
 
      private:
       ExecutorItf(
@@ -272,10 +278,10 @@ namespace iroha {
           logger::LoggerManagerTreePtr log_manager);
 
       /// Prepare WSV (as part of initialization).
-      iroha::expected::Result<void, std::string> prepareState() const;
+      iroha::expected::Result<void, std::string> prepareState();
 
       /// Create admin account with all permissions.
-      iroha::ametsuchi::CommandResult createAdmin() const;
+      iroha::ametsuchi::CommandResult createAdmin();
 
       /**
        * Create an account.
@@ -296,7 +302,13 @@ namespace iroha {
 
       /// Grant all grantable permissions of the given account to admin.
       iroha::ametsuchi::CommandResult grantAllToAdmin(
-          const std::string &account_name) const;
+          const std::string &account_name);
+
+      struct ExecutedCommandMeta {
+        shared_model::interface::types::AccountIdType creator_account_id;
+        std::string tx_hash;
+        shared_model::interface::types::CommandIndexType cmd_index;
+      };
 
       logger::LoggerManagerTreePtr log_manager_;
       logger::LoggerPtr log_;
@@ -310,7 +322,9 @@ namespace iroha {
       std::shared_ptr<iroha::ametsuchi::TransactionExecutor> tx_executor_;
       std::shared_ptr<iroha::ametsuchi::SpecificQueryExecutor> query_executor_;
 
+      shared_model::interface::types::CounterType command_counter_;
       shared_model::interface::types::CounterType query_counter_;
+      boost::optional<ExecutedCommandMeta> last_executed_cmd_meta_;
     };
 
   }  // namespace integration_framework
