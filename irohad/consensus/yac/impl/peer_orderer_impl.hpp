@@ -27,10 +27,11 @@ namespace iroha {
 
         boost::optional<ClusterOrdering> getOrdering(
             const YacHash &hash,
-            std::vector<std::shared_ptr<shared_model::interface::Peer>> peers)
+            std::vector<std::shared_ptr<shared_model::interface::Peer>> const& peers)
             override;
 
        private:
+        std::vector<size_t> peer_positions_;
         std::shared_ptr<ametsuchi::PeerQueryFactory> peer_query_factory_;
       };
 

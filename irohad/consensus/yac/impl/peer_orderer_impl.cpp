@@ -19,14 +19,19 @@ namespace iroha {
           std::shared_ptr<ametsuchi::PeerQueryFactory> peer_query_factory)
           : peer_query_factory_(peer_query_factory) {}
 
-      boost::optional<ClusterOrdering> PeerOrdererImpl::getOrdering(
-          const YacHash &hash,
-          std::vector<std::shared_ptr<shared_model::interface::Peer>> peers) {
+      boost::optional<ClusterOrdering> PeerOrdererImpl::getOrdering( const YacHash &hash,
+          std::vector<std::shared_ptr<shared_model::interface::Peer>> const& peers) {
+
         std::seed_seq seed(hash.vote_hashes.block_hash.begin(),
                            hash.vote_hashes.block_hash.end());
+
+        peer_positions_.resize(peers.size());
+        std::iota (std::begin(peer_positions_), std::end(peer_positions_), 0);
+
         std::default_random_engine gen(seed);
-        std::shuffle(peers.begin(), peers.end(), gen);
-        return ClusterOrdering::create(peers);
+        std::shuffle(peer_positions_.begin(), peer_positions_.end(), gen);
+
+        return ClusterOrdering::create(peers, peer_positions_);
       }
     }  // namespace yac
   }    // namespace consensus

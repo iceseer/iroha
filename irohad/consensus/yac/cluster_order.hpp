@@ -33,8 +33,11 @@ namespace iroha {
          * @return false if vector is empty, true otherwise
          */
         static boost::optional<ClusterOrdering> create(
-            const std::vector<std::shared_ptr<shared_model::interface::Peer>>
-                &order);
+            std::vector<std::shared_ptr<shared_model::interface::Peer>> const& order,
+            std::vector<size_t> const& peer_positions
+            );
+        static boost::optional<ClusterOrdering> create(
+            std::vector<std::shared_ptr<shared_model::interface::Peer>> const& order);
 
         /**
          * Provide current leader peer
@@ -64,7 +67,10 @@ namespace iroha {
        private:
         // prohibit creation of the object not from create method
         explicit ClusterOrdering(
-            std::vector<std::shared_ptr<shared_model::interface::Peer>> order);
+            std::vector<std::shared_ptr<shared_model::interface::Peer>> const& order,
+            std::vector<size_t> const& peer_positions);
+        explicit ClusterOrdering(
+            std::vector<std::shared_ptr<shared_model::interface::Peer>> const& order);
 
         std::vector<std::shared_ptr<shared_model::interface::Peer>> order_;
         PeersNumberType index_ = 0;
