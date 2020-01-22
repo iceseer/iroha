@@ -27,8 +27,8 @@ namespace iroha {
 
         boost::optional<ClusterOrdering> getOrdering(
             const YacHash &hash,
-            std::vector<std::shared_ptr<shared_model::interface::Peer>> const& peers)
-            override;
+            std::vector<std::shared_ptr<shared_model::interface::Peer>> const
+                &peers) override;
 
        private:
         std::vector<size_t> peer_positions_;
