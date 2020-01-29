@@ -11,10 +11,10 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/format.hpp>
+#include "ametsuchi/default_vm_call.hpp"
 #include "ametsuchi/impl/executor_common.hpp"
 #include "ametsuchi/impl/soci_std_optional.hpp"
 #include "ametsuchi/impl/soci_utils.hpp"
-#include "ametsuchi/vmCall.h"
 #include "cryptography/hash.hpp"
 #include "cryptography/public_key.hpp"
 #include "interfaces/commands/add_asset_quantity.hpp"
@@ -558,10 +558,10 @@ namespace iroha {
           END AS result;)",
           {(boost::format(R"(has_perm AS (%s),)")
             % checkAccountDomainRoleOrGlobalRolePermission(
-                  Role::kAddAssetQty,
-                  Role::kAddDomainAssetQty,
-                  ":creator",
-                  ":asset_id"))
+                Role::kAddAssetQty,
+                Role::kAddDomainAssetQty,
+                ":creator",
+                ":asset_id"))
                .str(),
            "AND (SELECT * from has_perm)",
            "WHEN NOT (SELECT * from has_perm) THEN 2"});
@@ -735,7 +735,7 @@ namespace iroha {
               )")
             % checkAccountRolePermission(Role::kSetDetail, ":creator")
             % checkAccountGrantablePermission(
-                  Grantable::kSetMyAccountDetail, ":creator", ":target")
+                Grantable::kSetMyAccountDetail, ":creator", ":target")
             % hasQueryPermission(":creator",
                                  ":target",
                                  Role::kGetMyAccDetail,
@@ -1137,7 +1137,7 @@ namespace iroha {
               )")
             % checkAccountRolePermission(Role::kSetDetail, ":creator")
             % checkAccountGrantablePermission(
-                  Grantable::kSetMyAccountDetail, ":creator", ":target"))
+                Grantable::kSetMyAccountDetail, ":creator", ":target"))
                .str(),
            R"( AND (SELECT * FROM has_perm))",
            R"( WHEN NOT (SELECT * FROM has_perm) THEN 2 )"});
@@ -1245,10 +1245,10 @@ namespace iroha {
           {(boost::format(R"(
                has_perm AS (%s),)")
             % checkAccountDomainRoleOrGlobalRolePermission(
-                  Role::kSubtractAssetQty,
-                  Role::kSubtractDomainAssetQty,
-                  ":creator",
-                  ":asset_id"))
+                Role::kSubtractAssetQty,
+                Role::kSubtractDomainAssetQty,
+                ":creator",
+                ":asset_id"))
                .str(),
            R"( AND (SELECT * FROM has_perm))",
            R"( WHEN NOT (SELECT * FROM has_perm) THEN 2 )"});
@@ -1352,9 +1352,8 @@ namespace iroha {
               ),
               )")
             % checkAccountRolePermission(Role::kTransfer, ":creator")
-            % checkAccountGrantablePermission(Grantable::kTransferMyAssets,
-                                              ":creator",
-                                              ":source_account_id")
+            % checkAccountGrantablePermission(
+                Grantable::kTransferMyAssets, ":creator", ":source_account_id")
             % checkAccountRolePermission(Role::kReceive, ":dest_account_id"))
                .str(),
            R"( AND (SELECT * FROM has_perm))",
@@ -1641,7 +1640,7 @@ namespace iroha {
       char *caller = const_cast<char *>(creator_account_id.c_str());
       char *callee = const_cast<char *>(command.callee().c_str());
       char *input = const_cast<char *>(command.input().c_str());
-      VmCall_return res =
+      auto res =
           VmCall(input, caller, callee, this, specific_query_executor_.get());
       if (res.r1 == 0) {
         // TODO(IvanTyulyandin): need to set appropriate error value, 5 used to
