@@ -119,7 +119,6 @@ target_link_libraries(ametsuchi_fixture INTERFACE
     SOCI::core
     pg_connection_init
     test_logger
-    vmCall
     )
 
 addtest(k_times_reconnection_strategy_test k_times_reconnection_strategy_test.cpp)
@@ -132,8 +131,10 @@ target_link_libraries(peer_query_wsv_test
     ametsuchi
     )
 
-addtest(vm_call_test vm_call_test.cpp)
-target_link_libraries(vm_call_test
-    ametsuchi
-    shared_model_proto_backend
-    )
+if(USE_BURROW)
+    addtest(vm_call_test vm_call_test.cpp)
+    target_link_libraries(vm_call_test
+        ametsuchi
+        shared_model_proto_backend
+        )
+endif()
