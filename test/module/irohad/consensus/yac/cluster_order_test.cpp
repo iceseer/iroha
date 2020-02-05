@@ -30,7 +30,7 @@ class ClusterOrderTest : public ::testing::Test {
  * @then create function returns nonempty object
  */
 TEST_F(ClusterOrderTest, GoodClusterOrderCreation) {
-  auto order = iroha::consensus::yac::ClusterOrdering::create(peers_list);
+  auto order = iroha::consensus::yac::ClusterOrdering::create(peers_list, {});
   ASSERT_TRUE(order);
 }
 
@@ -41,12 +41,12 @@ TEST_F(ClusterOrderTest, GoodClusterOrderCreation) {
  */
 TEST_F(ClusterOrderTest, BadClusterOrderCreation) {
   auto empty_order =
-      iroha::consensus::yac::ClusterOrdering::create(empty_peers_list);
+      iroha::consensus::yac::ClusterOrdering::create(empty_peers_list, {});
   ASSERT_FALSE(empty_order);
 }
 
 TEST_F(ClusterOrderTest, ClusterOrderOnNext) {
-  auto order = iroha::consensus::yac::ClusterOrdering::create(peers_list);
+  auto order = iroha::consensus::yac::ClusterOrdering::create(peers_list, {});
   ASSERT_TRUE(order);
   ASSERT_EQ("1", order->currentLeader().address());
   ASSERT_EQ("2", order->switchToNext().currentLeader().address());

@@ -23,7 +23,7 @@ using namespace std;
  * @then commit not emitted
  */
 TEST_F(YacTest, UnknownVoteBeforeCommit) {
-  auto my_order = ClusterOrdering::create(default_peers);
+  auto my_order = ClusterOrdering::create(default_peers, {});
   ASSERT_TRUE(my_order);
   initYac(my_order.value());
 
@@ -61,7 +61,7 @@ TEST_F(YacTest, UnknownVoteAfterCommit) {
       {default_peers.begin(), default_peers.begin() + 4});
   ASSERT_EQ(4, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());

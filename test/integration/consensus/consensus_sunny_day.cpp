@@ -111,7 +111,7 @@ class ConsensusSunnyDayTest : public ::testing::Test {
     crypto = std::make_shared<FixedCryptoProvider>(my_pub_key);
     timer = std::make_shared<TimerImpl>(std::chrono::milliseconds(delay),
                                         rxcpp::observe_on_new_thread());
-    auto order = ClusterOrdering::create(default_peers);
+    auto order = ClusterOrdering::create(default_peers, {});
     ASSERT_TRUE(order);
 
     yac = Yac::create(
@@ -169,7 +169,7 @@ TEST_F(ConsensusSunnyDayTest, SunnyDayTest) {
 
   YacHash my_hash(initial_round, "proposal_hash", "block_hash");
   my_hash.block_signature = createSig(my_pub_key);
-  auto order = ClusterOrdering::create(default_peers);
+  auto order = ClusterOrdering::create(default_peers, {});
   ASSERT_TRUE(order);
 
   yac->vote(my_hash, *order);

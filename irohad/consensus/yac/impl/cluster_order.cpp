@@ -19,29 +19,22 @@ namespace iroha {
         return ClusterOrdering(order, peer_positions);
       }
 
-      boost::optional<ClusterOrdering> ClusterOrdering::create(
-          const std::vector<std::shared_ptr<shared_model::interface::Peer>>
-              &order) {
-        if (order.empty()) {
-          return boost::none;
-        }
-        return ClusterOrdering(order);
-      }
-
       ClusterOrdering::ClusterOrdering(
           std::vector<std::shared_ptr<shared_model::interface::Peer>> const
               &order,
           std::vector<size_t> const &peer_positions) {
         order_.reserve(order.size());
-        for (auto const &i : peer_positions) {
-          order_.emplace_back(order[i]);
+        if (!peer_positions.empty()) {
+          BOOST_ASSERT_MSG(peer_positions.size() == order.size(), 
+            "Peer positions must be the same size to define ordering.");
+          
+          for (auto const &i : peer_positions) {
+            order_.emplace_back(order[i]);
+          }
+        } else {
+          order_ = order;
         }
       }
-
-      ClusterOrdering::ClusterOrdering(
-          std::vector<std::shared_ptr<shared_model::interface::Peer>> const
-              &order)
-          : order_(order) {}
 
       // TODO :  24/03/2018 x3medima17: make it const, IR-1164
       const shared_model::interface::Peer &ClusterOrdering::currentLeader() {

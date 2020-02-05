@@ -51,7 +51,7 @@ namespace iroha {
           network = std::make_shared<MockYacNetwork>();
           crypto = std::make_shared<MockYacCryptoProvider>();
           timer = std::make_shared<MockTimer>();
-          auto ordering = ClusterOrdering::create(default_peers);
+          auto ordering = ClusterOrdering::create(default_peers, {});
           ASSERT_TRUE(ordering);
           initYac(ordering.value());
         }

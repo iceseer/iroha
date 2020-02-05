@@ -109,7 +109,7 @@ namespace iroha {
             },
             consensus_log_manager->getChild("Network")->getLogger());
 
-        auto yac = createYac(*ClusterOrdering::create(peers.value()),
+        auto yac = createYac(*ClusterOrdering::create(peers.value(), {}),
                              initial_round,
                              keypair,
                              createTimer(vote_delay_milliseconds),
@@ -127,7 +127,7 @@ namespace iroha {
             std::move(yac),
             std::move(peer_orderer),
             alternative_peers |
-                [](auto &peers) { return ClusterOrdering::create(peers); },
+                [](auto &peers) { return ClusterOrdering::create(peers, {}); },
             hash_provider,
             block_creator,
             std::move(consensus_result_cache),

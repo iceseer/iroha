@@ -28,7 +28,7 @@ TEST_F(YacTest, InvalidCaseWhenNotReceiveSupermajority) {
       {default_peers.begin(), default_peers.begin() + N});
   ASSERT_EQ(N, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());
@@ -62,7 +62,7 @@ TEST_F(YacTest, InvalidCaseWhenDoesNotVerify) {
       {default_peers.begin(), default_peers.begin() + 4});
   ASSERT_EQ(4, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());
@@ -98,7 +98,7 @@ TEST_F(YacTest, ValidCaseWhenReceiveOnVoteAfterReject) {
       {default_peers.begin(), default_peers.begin() + peers_number});
   ASSERT_EQ(peers_number, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());

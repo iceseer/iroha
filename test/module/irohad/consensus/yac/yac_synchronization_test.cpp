@@ -22,7 +22,7 @@ class NetworkUtil {
     for (size_t i = 0; i < number_of_peers; ++i) {
       peers_.push_back(makePeer(std::to_string(i)));
     }
-    order_ = ClusterOrdering::create(peers_);
+    order_ = ClusterOrdering::create(peers_, {});
   }
 
   auto createHash(const iroha::consensus::Round &r,

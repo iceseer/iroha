@@ -31,7 +31,7 @@ TEST_F(YacTest, ValidCaseWhenReceiveSupermajority) {
       {default_peers.begin(), default_peers.begin() + 4});
   ASSERT_EQ(4, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());
@@ -57,7 +57,7 @@ TEST_F(YacTest, ValidCaseWhenReceiveCommit) {
       {default_peers.begin(), default_peers.begin() + 4});
   ASSERT_EQ(4, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());
@@ -98,7 +98,7 @@ TEST_F(YacTest, ValidCaseWhenReceiveCommitTwice) {
       {default_peers.begin(), default_peers.begin() + 4});
   ASSERT_EQ(4, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   EXPECT_CALL(*timer, deny()).Times(1);
@@ -138,7 +138,7 @@ TEST_F(YacTest, ValidCaseWhenSoloConsensus) {
   auto my_peers = decltype(default_peers)({default_peers.at(0)});
   ASSERT_EQ(1, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());
@@ -182,7 +182,7 @@ TEST_F(YacTest, ValidCaseWhenVoteAfterCommit) {
       {default_peers.begin(), default_peers.begin() + 4});
   ASSERT_EQ(4, my_peers.size());
 
-  auto my_order = ClusterOrdering::create(my_peers);
+  auto my_order = ClusterOrdering::create(my_peers, {});
   ASSERT_TRUE(my_order);
 
   initYac(my_order.value());
