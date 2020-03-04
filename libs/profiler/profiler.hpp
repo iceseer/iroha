@@ -5,38 +5,24 @@
 #ifndef IROHA_PROFILER_HPP
 #define IROHA_PROFILER_HPP
 
+#include <cstdint>
+
 namespace iroha { namespace performance_tools {
 
-struct {
+//struct {
     // функция
     // метка
     // такты
     // частота
-};
+//};
 
+using Hash = uint64_t;
+using PerformanceCounter = uint64_t;
 
-struct Profiler final {
-    using ProfilerHandle = uint64_t;
-    using Hash = uint64_t;
-    using PerformanceCounter = uint64_t;
+inline void initThreadProfiler();
+inline void deinitThreadProfiler();
 
-    Profiler(Profiler const&) = delete;
-    Profiler& operator=(Profiler const&) = delete;
-
-    Profiler(Profiler&&) = delete;
-    Profiler& operator=(Profiler&&) = delete;
-
-    Profiler() = default;
-    ~Profiler() = default;
-
-public:
-    inline void push(Hash hash, char const *tag);
-    inline void pop(PerformanceCounter counter);
-};
-
-
-extern ProfilerHandle getProfilerHandle();
-
+inline void pushFunctionEntry(Hash f_hash, char const* tag);
 
 }}
 

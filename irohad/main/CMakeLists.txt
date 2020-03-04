@@ -74,6 +74,7 @@ target_link_libraries(application
     common
     pg_connection_init
     generator
+    profiler
     )
 
 add_executable(irohad irohad.cpp)
