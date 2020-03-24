@@ -147,7 +147,7 @@ namespace shared_model {
         return ValidationError(
           "EngineCall", {"Smart contract callee must be specified"});
       }
-      return boost::none;
+      return std::nullopt;
     }
 
     std::optional<ValidationError> FieldValidator::validateBytecode(
