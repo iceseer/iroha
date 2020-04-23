@@ -3,19 +3,19 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef IROHA_POSTGRES_READER_WRITER_HPP
-#define IROHA_POSTGRES_READER_WRITER_HPP
+#ifndef IROHA_POSTGRES_BURROW_STORAGE_HPP
+#define IROHA_POSTGRES_BURROW_STORAGE_HPP
 
-#include "ametsuchi/reader_writer.hpp"
+#include "ametsuchi/burrow_storage.hpp"
 
 namespace soci {
   class session;
 }
 
 namespace iroha::ametsuchi {
-  class PostgresReaderWriter : public ReaderWriter {
+  class PostgresBurrowStorage : public BurrowStorage {
    public:
-    PostgresReaderWriter(soci::session &sql);
+    PostgresBurrowStorage(soci::session &sql);
 
     expected::Result<std::optional<std::string>, std::string> getAccount(
         std::string_view address) override;
@@ -40,4 +40,4 @@ namespace iroha::ametsuchi {
 
 }  // namespace iroha::ametsuchi
 
-#endif  // IROHA_POSTGRES_READER_WRITER_HPP
+#endif
