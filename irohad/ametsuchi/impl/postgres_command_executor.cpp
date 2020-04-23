@@ -1647,8 +1647,7 @@ namespace iroha {
       if (res.r1 == 0) {
         // TODO(IvanTyulyandin): need to set appropriate error value, 5 used to
         // pass compilation
-        return makeCommandError(
-            "ADD SMART CONTRACT FAILED", 5, "ADD SMART CONTRACT");
+        return makeCommandError("EngineCall", 5, "EngineCall Failed");
       }
 
       StatementExecutor executor(store_engine_response_statements_,
