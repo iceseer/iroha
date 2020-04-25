@@ -7,8 +7,9 @@
 
 #include <soci/soci.h>
 #include <sys/types.h>
-#include <use.h>
-#include <exception>
+#include <algorithm>
+#include <optional>
+
 #include "ametsuchi/impl/soci_std_optional.hpp"
 #include "ametsuchi/impl/soci_string_view.hpp"
 #include "common/result.hpp"
@@ -16,7 +17,11 @@
 using namespace iroha::ametsuchi;
 using namespace iroha::expected;
 
-PostgresBurrowStorage::PostgresBurrowStorage(soci::session &sql) : sql_(sql) {}
+PostgresBurrowStorage::PostgresBurrowStorage(
+    soci::session &sql,
+    std::string const &tx_hash,
+    shared_model::interface::types::CommandIndexType cmd_index)
+    : sql_(sql), tx_hash_(tx_hash), cmd_index_(cmd_index) {}
 
 Result<std::optional<std::string>, std::string>
 PostgresBurrowStorage::getAccount(std::string_view address) {
@@ -106,5 +111,29 @@ Result<void, std::string> PostgresBurrowStorage::storeTxReceipt(
     std::string_view address,
     std::string_view data,
     std::vector<std::string_view> topics) {
-  return Value<void>{};
+  try {
+    std::optional<size_t> log_idx;
+    sql_ << "insert into burrow_tx_logs (tx_hash, cmd_index, address, data) "
+            "values (lower(:tx_hash), :cmd_index, lower(:address), :data) "
+            "returning log_idx",
+        soci::use(tx_hash_, "tx_hash"), soci::use(cmd_index_, "cmd_index"),
+        soci::use(address, "address"), soci::use(data, "data"),
+        soci::into(log_idx);
+    if (not log_idx) {
+      return makeError("could not insert log data");
+    }
+    std::vector<int> check{0, topics.size()};
+    sql_ << "insert into burrow_tx_logs_topics (topic, log_idx) "
+            "values (lower(:topic), :log_idx) "
+            "returning 1",
+        soci::use(topics, ":topic"), soci::use(log_idx.value(), "log_idx"),
+        soci::into(check);
+    if (not std::all_of(
+            check.begin(), check.end(), [](int i) { return i == 1; })) {
+      return makeError("could not insert log topics");
+    }
+    return Value<void>{};
+  } catch (std::exception const &e) {
+    return makeError(e.what());
+  }
 }

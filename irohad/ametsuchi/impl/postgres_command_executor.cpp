@@ -1392,8 +1392,7 @@ namespace iroha {
         std::shared_ptr<PostgresSpecificQueryExecutor> specific_query_executor)
         : sql_(std::move(sql)),
           perm_converter_{std::move(perm_converter)},
-          specific_query_executor_{std::move(specific_query_executor)},
-          burrow_storage_(std::make_unique<PostgresBurrowStorage>(*sql_)) {
+          specific_query_executor_{std::move(specific_query_executor)} {
       initStatements();
     }
 
@@ -1646,12 +1645,14 @@ namespace iroha {
       char *caller = const_cast<char *>(creator_account_id.c_str());
       char *callee = const_cast<char *>(command.callee().c_str());
       char *input = const_cast<char *>(command.input().c_str());
+      auto burrow_storage =
+          std::make_unique<PostgresBurrowStorage>(*sql_, tx_hash, cmd_index);
       auto res = VmCall(input,
                         caller,
                         callee,
                         this,
                         specific_query_executor_.get(),
-                        burrow_storage_.get());
+                        burrow_storage.get());
       if (res.r1 == 0) {
         // TODO(IvanTyulyandin): need to set appropriate error value, 5 used to
         // pass compilation
