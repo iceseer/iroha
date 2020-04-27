@@ -132,9 +132,11 @@ target_link_libraries(peer_query_wsv_test
     )
 
 if(USE_BURROW)
-    addtest(vm_call_test vm_call_test.cpp)
+  addtest(vm_call_test vm_call_test.cpp)
     target_link_libraries(vm_call_test
         ametsuchi
+        default_vm_call_include
+        burrow_vm_caller
         shared_model_proto_backend
         )
 endif()
