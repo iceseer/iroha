@@ -130,21 +130,33 @@ if(USE_BURROW)
         proto_specific_query_executor
         burrow_storage
         )
-    target_sources(ametsuchi PRIVATE impl/postgres_burrow_storage.cpp)
-    target_link_libraries(ametsuchi
-        vmCall
-        )
 
-    set(DEFAULT_VM_CALL_INCLUDE "ametsuchi/vmCall.h")
+    # hack due to https://gitlab.kitware.com/cmake/cmake/issues/18399
+    foreach(VM_CALLER_GENERATED_FILE IN LISTS VM_CALLER_GENERATED_FILES)
+      SET_SOURCE_FILES_PROPERTIES("${VM_CALLER_GENERATED_FILE}" PROPERTIES GENERATED TRUE)
+    endforeach()
+
+    target_sources(ametsuchi PRIVATE impl/postgres_burrow_storage.cpp)
+    add_dependencies(ametsuchi generate_burrow_vm_caller_lib_and_header)
+    target_link_libraries(ametsuchi burrow_vm_caller)
+
+    set(DEFAULT_VM_CALL_INCLUDE_IMPL "${VM_CALLER_HDR}")
 else()
-    set(DEFAULT_VM_CALL_INCLUDE "ametsuchi/impl/vm_call_stub.hpp")
+    set(DEFAULT_VM_CALL_INCLUDE_IMPL "ametsuchi/impl/vm_call_stub.hpp")
 endif()
+set(DEFAULT_VM_CALL_HDR_INCLUDE_PATH "${PROJECT_BINARY_DIR}/irohad/ametsuchi/")
+set(DEFAULT_VM_CALL_HDR "${DEFAULT_VM_CALL_HDR_INCLUDE_PATH}/default_vm_call.hpp")
 configure_file (
     "${PROJECT_SOURCE_DIR}/irohad/ametsuchi/default_vm_call.hpp.in"
-    "${PROJECT_BINARY_DIR}/irohad/ametsuchi/default_vm_call.hpp"
+    "${DEFAULT_VM_CALL_HDR}"
     )
+add_custom_target(default_vm_call_include_depender DEPENDS "${DEFAULT_VM_CALL_HDR}")
+add_library(default_vm_call_include INTERFACE)
+add_dependencies(default_vm_call_include default_vm_call_include_depender)
+target_include_directories(default_vm_call_include INTERFACE ${DEFAULT_VM_CALL_HDR_INCLUDE_PATH})
 
 target_link_libraries(ametsuchi
+    default_vm_call_include
     pg_connection_init
     flat_file_storage
     k_times_reconnection_strategy
@@ -163,9 +175,6 @@ target_link_libraries(ametsuchi
     SOCI::postgresql
     SOCI::core
     postgres_query_executor
-    )
-target_include_directories(ametsuchi PRIVATE
-    "${PROJECT_BINARY_DIR}/irohad"
     )
 
 target_compile_definitions(ametsuchi
