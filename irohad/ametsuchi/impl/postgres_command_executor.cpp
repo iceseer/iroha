@@ -25,6 +25,7 @@
 #include "interfaces/commands/add_peer.hpp"
 #include "interfaces/commands/add_signatory.hpp"
 #include "interfaces/commands/append_role.hpp"
+#include "interfaces/commands/call_engine.hpp"
 #include "interfaces/commands/command.hpp"
 #include "interfaces/commands/compare_and_set_account_detail.hpp"
 #include "interfaces/commands/create_account.hpp"
@@ -32,7 +33,6 @@
 #include "interfaces/commands/create_domain.hpp"
 #include "interfaces/commands/create_role.hpp"
 #include "interfaces/commands/detach_role.hpp"
-#include "interfaces/commands/engine_call.hpp"
 #include "interfaces/commands/grant_permission.hpp"
 #include "interfaces/commands/remove_peer.hpp"
 #include "interfaces/commands/remove_signatory.hpp"
@@ -1634,7 +1634,7 @@ namespace iroha {
     }
 
     CommandResult PostgresCommandExecutor::operator()(
-        const shared_model::interface::EngineCall &command,
+        const shared_model::interface::CallEngine &command,
         const shared_model::interface::types::AccountIdType &creator_account_id,
         const std::string &tx_hash,
         shared_model::interface::types::CommandIndexType cmd_index,
@@ -1642,8 +1642,10 @@ namespace iroha {
       // need to use const cast to call vm
       // inside VmCall this strings are copied
       // and source data is not modified
-      char *caller = const_cast<char *>(creator_account_id.c_str());
-      char *callee = const_cast<char *>(command.callee().c_str());
+      char *callee = command.callee()
+          ? const_cast<char *>(command.callee()->get().c_str())
+          : static_cast<char *>(nullptr);
+      char *caller = const_cast<char *>(command.caller().c_str());
       char *input = const_cast<char *>(command.input().c_str());
       auto burrow_storage =
           std::make_unique<PostgresBurrowStorage>(*sql_, tx_hash, cmd_index);
@@ -1656,7 +1658,7 @@ namespace iroha {
       if (res.r1 == 0) {
         // TODO(IvanTyulyandin): need to set appropriate error value, 5 used to
         // pass compilation
-        return makeCommandError("EngineCall", 5, "EngineCall Failed");
+        return makeCommandError("CallEngine", 5, "CallEngine Failed");
       }
 
       StatementExecutor executor(store_engine_response_statements_,
