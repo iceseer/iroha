@@ -100,8 +100,10 @@ class ValidatorsTest : public ::testing::Test {
         {"iroha.protocol.AddAssetQuantity.amount", setString(amount)},
         {"iroha.protocol.TransferAsset.amount", setString(amount)},
         {"iroha.protocol.SubtractAssetQuantity.amount", setString(amount)},
-        {"iroha.protocol.EngineCall.callee", setString(callee)},
-        {"iroha.protocol.EngineCall.input", setString(input)},
+        {"iroha.protocol.CallEngine.type",
+         setEnum(iroha::protocol::CallEngine::EngineType::kSolidity)},
+        {"iroha.protocol.CallEngine.callee", setString(callee)},
+        {"iroha.protocol.CallEngine.input", setString(input)},
         {"iroha.protocol.AddPeer.peer",
          [&](auto refl, auto msg, auto field) {
            refl->MutableMessage(msg, field)->CopyFrom(peer);

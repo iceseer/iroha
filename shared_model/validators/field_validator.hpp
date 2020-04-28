@@ -43,10 +43,11 @@ namespace shared_model {
       using TimeFunction = std::function<iroha::ts64_t()>;
 
      public:
-      FieldValidator(
-          std::shared_ptr<ValidatorsConfig> config,
-          time_t future_gap = kDefaultFutureGap,
-          TimeFunction time_provider = [] { return iroha::time::now(); });
+      FieldValidator(std::shared_ptr<ValidatorsConfig> config,
+                     time_t future_gap = kDefaultFutureGap,
+                     TimeFunction time_provider = [] {
+                       return iroha::time::now();
+                     });
 
       std::optional<ValidationError> validateAccountId(
           const interface::types::AccountIdType &account_id) const;
@@ -54,8 +55,8 @@ namespace shared_model {
       std::optional<ValidationError> validateAssetId(
           const interface::types::AssetIdType &asset_id) const;
 
-      std::optional<ValidationError> validateCallee(
-          const interface::types::AccountIdType &callee) const;
+      std::optional<ValidationError> validateEvmHexAddress(
+          const std::string &address) const;
 
       std::optional<ValidationError> validateBytecode(
           const interface::types::SmartContractCodeType &input) const;
