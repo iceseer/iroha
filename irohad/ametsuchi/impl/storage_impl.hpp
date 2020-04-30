@@ -35,6 +35,8 @@ namespace iroha {
   class PendingTransactionStorage;
 
   namespace ametsuchi {
+    class VmCaller;
+
     class StorageImpl : public Storage {
      public:
       static expected::Result<std::shared_ptr<StorageImpl>, std::string> create(
@@ -47,6 +49,7 @@ namespace iroha {
               query_response_factory,
           std::unique_ptr<BlockStorageFactory> temporary_block_storage_factory,
           std::unique_ptr<BlockStorage> persistent_block_storage,
+          std::optional<std::reference_wrapper<const VmCaller>> vm_caller_ref,
           logger::LoggerManagerTreePtr log_manager,
           size_t pool_size = 10);
 
@@ -127,6 +130,7 @@ namespace iroha {
               query_response_factory,
           std::unique_ptr<BlockStorageFactory> temporary_block_storage_factory,
           size_t pool_size,
+          std::optional<std::reference_wrapper<const VmCaller>> vm_caller,
           logger::LoggerManagerTreePtr log_manager);
 
       // db info
@@ -167,6 +171,8 @@ namespace iroha {
           query_response_factory_;
 
       std::unique_ptr<BlockStorageFactory> temporary_block_storage_factory_;
+
+      std::optional<std::reference_wrapper<const VmCaller>> vm_caller_ref_;
 
       logger::LoggerManagerTreePtr log_manager_;
       logger::LoggerPtr log_;

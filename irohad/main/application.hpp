@@ -6,6 +6,8 @@
 #ifndef IROHA_APPLICATION_HPP
 #define IROHA_APPLICATION_HPP
 
+#include <optional>
+
 #include "consensus/consensus_block_cache.hpp"
 #include "consensus/gate_object.hpp"
 #include "cryptography/crypto_provider/abstract_crypto_model_signer.hpp"
@@ -32,6 +34,7 @@ namespace iroha {
     class ReconnectionStrategyFactory;
     class PostgresOptions;
     struct PoolWrapper;
+    class VmCaller;
   }  // namespace ametsuchi
   namespace consensus {
     namespace yac {
@@ -253,6 +256,8 @@ class Irohad {
       query_response_factory_;
 
   // ------------------------| internal dependencies |-------------------------
+  std::optional<std::unique_ptr<iroha::ametsuchi::VmCaller>> vm_caller_;
+
  public:
   shared_model::crypto::Keypair keypair;
   std::shared_ptr<iroha::ametsuchi::Storage> storage;

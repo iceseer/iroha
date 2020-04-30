@@ -6,6 +6,7 @@
 #include "main/application.hpp"
 
 #include <boost/filesystem.hpp>
+#include <optional>
 #include <rxcpp/operators/rx-map.hpp>
 #include "ametsuchi/impl/flat_file_block_storage.hpp"
 #include "ametsuchi/impl/k_times_reconnection_strategy.hpp"
@@ -14,6 +15,7 @@
 #include "ametsuchi/impl/storage_impl.hpp"
 #include "ametsuchi/impl/tx_presence_cache_impl.hpp"
 #include "ametsuchi/impl/wsv_restorer_impl.hpp"
+#include "ametsuchi/vm_caller.hpp"
 #include "backend/protobuf/proto_block_json_converter.hpp"
 #include "backend/protobuf/proto_permission_to_string.hpp"
 #include "backend/protobuf/proto_proposal_factory.hpp"
@@ -66,6 +68,10 @@
 #include "validators/protobuf/proto_proposal_validator.hpp"
 #include "validators/protobuf/proto_query_validator.hpp"
 #include "validators/protobuf/proto_transaction_validator.hpp"
+
+#if defined(USE_BURROW)
+#include "ametsuchi/impl/burrow_vm_caller.hpp"
+#endif
 
 using namespace iroha;
 using namespace iroha::ametsuchi;
@@ -135,6 +141,9 @@ Irohad::Irohad(
   // initialization of iroha daemon
 
   if (auto e = expected::resultToOptionalError(initPendingTxsStorage() | [&] {
+#if defined(USE_BURROW)
+        vm_caller_ = std::make_unique<iroha::ametsuchi::BurrowVmCaller>();
+#endif
         return initStorage(std::move(pg_opt));
       })) {
     log_->error("Storage initialization failed: {}", e.value());
@@ -299,6 +308,11 @@ Irohad::RunResult Irohad::initStorage(
     persistent_block_storage = std::make_unique<PostgresBlockStorage>(
         pool_wrapper_, block_transport_factory, persistent_table, log_);
   }
+  std::optional<std::reference_wrapper<const iroha::ametsuchi::VmCaller>>
+      vm_caller_ref;
+  if (vm_caller_) {
+    vm_caller_ref = *vm_caller_.value();
+  }
   return StorageImpl::create(std::move(pg_opt),
                              pool_wrapper_,
                              perm_converter,
@@ -306,6 +320,7 @@ Irohad::RunResult Irohad::initStorage(
                              query_response_factory_,
                              std::move(temporary_block_storage_factory),
                              std::move(persistent_block_storage),
+                             vm_caller_ref,
                              log_manager_->getChild("Storage"))
              | [&](auto &&v) -> RunResult {
     storage = std::move(v);
