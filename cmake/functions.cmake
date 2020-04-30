@@ -103,20 +103,24 @@ function(prepare_generated_schema_go_path)
     )
 endfunction()
 
+macro(get_go_env_path OUTPUT_VAR)
+  set(${OUTPUT_VAR} "$ENV{PATH}")
+  if(DEFINED ENV{GOBIN})
+    set(${OUTPUT_VAR} "${${OUTPUT_VAR}}:$ENV{GOBIN}")
+  endif()
+  if(DEFINED ENV{GOPATH})
+    set(${OUTPUT_VAR} "${${OUTPUT_VAR}}:$ENV{GOPATH}/bin")
+  endif()
+endmacro()
+
 function(compile_proto_to_go PROTO DEPENDER_TARGET)
     prepare_generated_schema_go_path()
     get_filename_component(PROTO_PATH "${PROTO}" DIRECTORY)
     get_filename_component(GEN_PB_GO_NAME_WE "${PROTO}" NAME_WE)
     set(GEN_PB_GO_PATH "${GO_GENERATED_SCHEMA_PATH}/${GEN_PB_GO_NAME_WE}.pb.go")
-    set(ENV_PATH "$ENV{PATH}")
-    if(DEFINED ENV{GOBIN})
-      set(ENV_PATH "${ENV_PATH}:$ENV{GOBIN}")
-    endif()
-    if(DEFINED ENV{GOPATH})
-      set(ENV_PATH "${ENV_PATH}:$ENV{GOPATH}/bin")
-    endif()
     get_target_property(Protobuf_INCLUDE_DIR protobuf::libprotobuf
       INTERFACE_INCLUDE_DIRECTORIES)
+    get_go_env_path(ENV_PATH)
     add_custom_command(
         OUTPUT "${GEN_PB_GO_PATH}"
         COMMAND env "PATH=${ENV_PATH}" $<TARGET_FILE:protobuf::protoc>

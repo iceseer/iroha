@@ -32,6 +32,8 @@ configure_file(
     @ONLY
   )
 
+get_go_env_path(ENV_PATH)
+
 add_custom_command(
   OUTPUT
     "${VM_CALLER_LIB}"
@@ -42,7 +44,7 @@ add_custom_command(
   WORKING_DIRECTORY
     "${CMAKE_CURRENT_SOURCE_DIR}"
   COMMAND
-    env "GOPATH=${GOPATH}" go build
+  env "PATH=${ENV_PATH}" "GOPATH=${GOPATH}" go build
       --modfile "${GO_MOD_FILE_PATH}"
       -buildmode=c-archive
       -o "${VM_CALLER_LIB}"
@@ -57,6 +59,7 @@ add_custom_target(generate_burrow_vm_caller_lib_and_header
 )
 
 add_library(burrow_vm_caller STATIC IMPORTED GLOBAL)
+add_dependencies(burrow_vm_caller generate_burrow_vm_caller_lib_and_header)
 set_property(TARGET burrow_vm_caller PROPERTY IMPORTED_LOCATION "${VM_CALLER_LIB}")
 target_link_libraries(burrow_vm_caller
   INTERFACE
@@ -64,11 +67,9 @@ target_link_libraries(burrow_vm_caller
     proto_specific_query_executor
     burrow_storage
   )
-
-# export variables
-set(GOPATH "${GOPATH}" PARENT_SCOPE)
-set(GOPATH_GENERATED "${GOPATH_GENERATED}" PARENT_SCOPE)
-set(VM_CALLER_LIB "${VM_CALLER_LIB}" PARENT_SCOPE)
-set(VM_CALLER_HDR "${VM_CALLER_HDR}" PARENT_SCOPE)
-# hack due to https://gitlab.kitware.com/cmake/cmake/issues/18399
-set(VM_CALLER_GENERATED_FILES "${VM_CALLER_LIB};${VM_CALLER_HDR}" PARENT_SCOPE)
+target_include_directories(burrow_vm_caller INTERFACE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(burrow_vm_caller
+  INTERFACE
+    USE_EVM
+    DEFAULT_VM_CALL_INCLUDE_IMPL="${VM_CALLER_HDR}"
+  )
