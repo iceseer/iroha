@@ -138,4 +138,11 @@ if(USE_BURROW)
         burrow_vm_caller
         shared_model_proto_backend
         )
+
+  addtest(postgres_burrow_storage_test postgres_burrow_storage_test.cpp)
+  target_link_libraries(postgres_burrow_storage_test
+      burrow_storage
+      test_db_manager
+      test_logger
+      )
 endif()
