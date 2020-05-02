@@ -48,6 +48,7 @@ namespace iroha::ametsuchi {
     soci::session &sql_;
     std::string const &tx_hash_;
     shared_model::interface::types::CommandIndexType cmd_index_;
+    std::optional<size_t> call_id_cache_;
   };
 
 }  // namespace iroha::ametsuchi

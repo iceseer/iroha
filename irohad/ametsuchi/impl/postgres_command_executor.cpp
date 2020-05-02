@@ -1194,9 +1194,16 @@ namespace iroha {
                                                                 R"(
           WITH
             inserted AS (
-              INSERT INTO engine_response_records
-              (creator_id, tx_hash, cmd_index, engine_response)
-              VALUES (:creator, :tx_hash, :cmd_index, :engine_response)
+              INSERT INTO engine_calls
+              (
+                creator_id, tx_hash, cmd_index, engine_response,
+                callee, created_address
+              )
+              VALUES
+              (
+                :creator, :tx_hash, :cmd_index, :engine_response,
+                :callee, :created_address
+              )
               ON CONFLICT (creator_id, tx_hash, cmd_index)
               DO UPDATE SET engine_response = :engine_response
               RETURNING (1)
@@ -1679,7 +1686,16 @@ namespace iroha {
                   executor.use("creator", creator_account_id);
                   executor.use("tx_hash", tx_hash);
                   executor.use("cmd_index", cmd_index);
-                  executor.use("engine_response", value.value);
+                  executor.use("callee", command.callee());
+
+                  const bool is_sc_deployment = not command.callee();
+                  if (is_sc_deployment) {
+                    executor.use("engine_response", std::nullopt);
+                    executor.use("created_address", value.value);
+                  } else {
+                    executor.use("engine_response", value.value);
+                    executor.use("created_address", std::nullopt);
+                  }
 
                   return executor.execute();
                 },
