@@ -5,13 +5,14 @@
 
 #include "ametsuchi/impl/postgres_burrow_storage.hpp"
 
-#include <soci/soci.h>
 #include <sys/types.h>
 #include <algorithm>
 #include <optional>
 
+#include <soci/soci.h>
 #include "ametsuchi/impl/soci_std_optional.hpp"
 #include "ametsuchi/impl/soci_string_view.hpp"
+#include "common/obj_utils.hpp"
 #include "common/result.hpp"
 
 using namespace iroha::ametsuchi;
@@ -113,16 +114,44 @@ Result<void, std::string> PostgresBurrowStorage::storeTxReceipt(
     std::vector<std::string_view> topics) {
   try {
     std::optional<size_t> log_idx;
-    sql_ << "insert into burrow_tx_logs (tx_hash, cmd_index, address, data) "
-            "values (lower(:tx_hash), :cmd_index, lower(:address), :data) "
-            "returning log_idx",
-        soci::use(tx_hash_, "tx_hash"), soci::use(cmd_index_, "cmd_index"),
-        soci::use(address, "address"), soci::use(data, "data"),
-        soci::into(log_idx);
-    if (not log_idx) {
+
+    if (call_id_cache_) {
+      sql_ << "insert into burrow_tx_logs (:call_id, address, data) "
+              "values (lower(:tx_hash), :cmd_index, lower(:address), :data) "
+              "returning log_idx",
+          soci::use(call_id_cache_.value(), "call_id"),
+          soci::use(address, "address"), soci::use(data, "data"),
+          soci::into(log_idx);
+    } else {
+      sql_ << "with inserted_call_id as "
+              "("
+              "  insert into engine_calls (tx_hash, cmd_index)"
+              "  values (:tx_hash, :cmd_index)"
+              "  on conflict (tx_hash, cmd_index) do nothing"
+              "  returning call_id"
+              ")"
+              "insert into burrow_tx_logs (call_id, address, data) "
+              "select call_id, :address, :data from "
+              "("
+              "  ("
+              "    select * from inserted_call_id"
+              "  ) union ("
+              "    select call_id from engine_calls"
+              "    where tx_hash = :tx_hash and cmd_index = :cmd_index"
+              "  )"
+              ") t0 "
+              "returning call_id, log_idx",
+          soci::use(tx_hash_, "tx_hash"), soci::use(cmd_index_, "cmd_index"),
+          soci::use(address, "address"), soci::use(data, "data"),
+          soci::into(call_id_cache_), soci::into(log_idx);
+    }
+
+    assert(call_id_cache_);
+    assert(log_idx);
+    if (not call_id_cache_ or not log_idx) {
       return makeError("could not insert log data");
     }
-    std::vector<int> check{0, topics.size()};
+    std::vector<int> check{0, static_cast<int>(topics.size())};
     sql_ << "insert into burrow_tx_logs_topics (topic, log_idx) "
             "values (lower(:topic), :log_idx) "
             "returning 1",
