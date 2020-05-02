@@ -171,7 +171,8 @@ namespace iroha {
                 perm_converter,
                 getTestLoggerManager()
                     ->getChild("SpecificQueryExecutor")
-                    ->getLogger()));
+                    ->getLogger()),
+            std::nullopt);
 
         auto query_executor_result = storage->createQueryExecutor(
             pending_txs_storage, query_response_factory);
