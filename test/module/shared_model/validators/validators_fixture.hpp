@@ -101,7 +101,8 @@ class ValidatorsTest : public ::testing::Test {
         {"iroha.protocol.TransferAsset.amount", setString(amount)},
         {"iroha.protocol.SubtractAssetQuantity.amount", setString(amount)},
         {"iroha.protocol.CallEngine.type",
-         setEnum(iroha::protocol::CallEngine::EngineType::kSolidity)},
+         setEnum(iroha::protocol::CallEngine::EngineType::
+                     CallEngine_EngineType_kSolidity)},
         {"iroha.protocol.CallEngine.callee", setString(callee)},
         {"iroha.protocol.CallEngine.input", setString(input)},
         {"iroha.protocol.AddPeer.peer",

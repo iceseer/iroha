@@ -1686,15 +1686,17 @@ namespace iroha {
                   executor.use("creator", creator_account_id);
                   executor.use("tx_hash", tx_hash);
                   executor.use("cmd_index", cmd_index);
-                  executor.use("callee", command.callee());
 
-                  const bool is_sc_deployment = not command.callee();
-                  if (is_sc_deployment) {
-                    executor.use("engine_response", std::nullopt);
-                    executor.use("created_address", value.value);
-                  } else {
+                  if (command.callee()) {
+                    // calling a deployed contract
+                    executor.use("callee", command.callee()->get());
                     executor.use("engine_response", value.value);
                     executor.use("created_address", std::nullopt);
+                  } else {
+                    // deploying a new contract
+                    executor.use("callee", std::nullopt);
+                    executor.use("engine_response", std::nullopt);
+                    executor.use("created_address", value.value);
                   }
 
                   return executor.execute();
