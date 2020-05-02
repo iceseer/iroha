@@ -8,8 +8,6 @@
 
 #include "ametsuchi/vm_caller.hpp"
 
-#include <memory>
-
 namespace iroha::ametsuchi {
   class BurrowVmCaller : public VmCaller {
    public:

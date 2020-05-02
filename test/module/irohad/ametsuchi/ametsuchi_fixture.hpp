@@ -95,6 +95,7 @@ namespace iroha {
                             query_response_factory_,
                             std::move(block_storage_factory),
                             std::move(block_storage),
+                            std::nullopt,
                             getTestLoggerManager()->getChild("Storage"))
             .match([&](const auto &_storage) { storage = _storage.value; },
                    [](const auto &error) {
