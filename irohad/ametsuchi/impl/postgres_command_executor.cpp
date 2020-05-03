@@ -1196,16 +1196,19 @@ namespace iroha {
             inserted AS (
               INSERT INTO engine_calls
               (
-                creator_id, tx_hash, cmd_index, engine_response,
+                tx_hash, cmd_index, engine_response,
                 callee, created_address
               )
               VALUES
               (
-                :creator, :tx_hash, :cmd_index, :engine_response,
+                :tx_hash, :cmd_index, :engine_response,
                 :callee, :created_address
               )
-              ON CONFLICT (creator_id, tx_hash, cmd_index)
-              DO UPDATE SET engine_response = :engine_response
+              ON CONFLICT (tx_hash, cmd_index)
+              DO UPDATE SET
+                engine_response = excluded.engine_response,
+                callee = excluded.callee,
+                created_address = excluded.created_address
               RETURNING (1)
             )
           SELECT CASE
@@ -1652,16 +1655,21 @@ namespace iroha {
         shared_model::interface::types::CommandIndexType cmd_index,
         bool do_validation) {
       if (vm_caller_) {
-        {  // check permissions
+        if (do_validation) {
+          // check permissions
           int has_permission = 0;
           using namespace shared_model::interface::permissions;
-          *sql_ << fmt::format(
-              "select count(1) from (({}) union ({})) t",
-              checkAccountRolePermission(Role::kCallEngine, ":creator"),
-              checkAccountGrantablePermission(
-                  Grantable::kCallEngineOnMyBehalf, ":creator", ":caller")),
-              soci::use(creator_account_id, "creator"),
-              soci::use(command.caller(), "caller"), soci::into(has_permission);
+          if (creator_account_id == command.caller()) {
+            *sql_ << checkAccountRolePermission(Role::kCallEngine, ":creator"),
+                soci::use(creator_account_id, "creator"),
+                soci::into(has_permission);
+          } else {
+            *sql_ << checkAccountGrantablePermission(
+                Grantable::kCallEngineOnMyBehalf, ":creator", ":caller"),
+                soci::use(creator_account_id, "creator"),
+                soci::use(command.caller(), "caller"),
+                soci::into(has_permission);
+          }
           if (has_permission == 0) {
             return makeCommandError("CallEngine", 2, "Not enough permissions.");
           }
