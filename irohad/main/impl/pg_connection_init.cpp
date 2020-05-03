@@ -344,9 +344,12 @@ CREATE TABLE IF NOT EXISTS burrow_tx_logs (
 );
 CREATE TABLE IF NOT EXISTS burrow_tx_logs_topics (
     topic varchar(64),
-    log_idx integer references burrow_tx_logs(log_idx),
-    primary key(log_idx)
+    log_idx integer references burrow_tx_logs(log_idx)
 );
+CREATE INDEX IF NOT EXISTS burrow_tx_logs_topics_log_idx
+    ON burrow_tx_logs_topics
+    USING btree
+    (log_idx ASC);
 )";
   session << prepare_tables_sql;
 }
