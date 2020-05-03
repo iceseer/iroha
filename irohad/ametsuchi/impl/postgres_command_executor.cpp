@@ -1682,7 +1682,10 @@ namespace iroha {
                   cmd_index,
                   EvmCodeHexString{command.input()},
                   command.caller(),
-                  command.callee(),
+                  command.callee()
+                      ? std::optional<EvmCalleeHexStringView>{command.callee()
+                                                                  ->get()}
+                      : std::optional<EvmCalleeHexStringView>{std::nullopt},
                   *this,
                   *specific_query_executor_)
             .match(
@@ -1691,7 +1694,6 @@ namespace iroha {
                                              false,
                                              "StoreEngineResponse",
                                              perm_converter_);
-                  executor.use("creator", creator_account_id);
                   executor.use("tx_hash", tx_hash);
                   executor.use("cmd_index", cmd_index);
 
