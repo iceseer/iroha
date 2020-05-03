@@ -19,6 +19,7 @@ namespace shared_model {
 
       BOOST_STRONG_TYPEDEF(std::string_view, PublicKeyHexStringView)
       BOOST_STRONG_TYPEDEF(ByteRange, PublicKeyByteRangeView)
+      BOOST_STRONG_TYPEDEF(std::string_view, EvmCalleeHexStringView)
     }  // namespace types
   }    // namespace interface
 }  // namespace shared_model

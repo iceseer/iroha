@@ -20,11 +20,13 @@ iroha::expected::Result<std::string, std::string> BurrowVmCaller::call(
     shared_model::interface::types::CommandIndexType cmd_index,
     shared_model::interface::types::EvmCodeHexString const &input,
     shared_model::interface::types::AccountIdType const &caller,
-    std::optional<std::reference_wrapper<const std::string>> callee,
+    std::optional<shared_model::interface::types::EvmCalleeHexStringView>
+        callee,
     CommandExecutor &command_executor,
     SpecificQueryExecutor &query_executor) const {
-  const char *callee_raw =
-      callee ? callee->get().c_str() : static_cast<const char *>(nullptr);
+  const char *callee_raw = callee
+      ? static_cast<std::string_view &>(callee.value()).c_str()
+      : static_cast<const char *>(nullptr);
   const char *input_raw =
       const_cast<char *>(static_cast<const std::string &>(input).c_str());
   auto burrow_storage =

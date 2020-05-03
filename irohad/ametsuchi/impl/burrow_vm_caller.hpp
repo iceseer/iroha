@@ -17,7 +17,8 @@ namespace iroha::ametsuchi {
         shared_model::interface::types::CommandIndexType cmd_index,
         shared_model::interface::types::EvmCodeHexString const &input,
         shared_model::interface::types::AccountIdType const &caller,
-        std::optional<std::reference_wrapper<const std::string>> callee,
+        std::optional<shared_model::interface::types::EvmCalleeHexStringView>
+            callee,
         CommandExecutor &command_executor,
         SpecificQueryExecutor &query_executor) const override;
   };
