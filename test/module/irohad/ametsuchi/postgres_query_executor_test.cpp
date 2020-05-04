@@ -173,6 +173,7 @@ namespace iroha {
                     ->getChild("SpecificQueryExecutor")
                     ->getLogger()),
             std::nullopt);
+        pending_txs_storage = std::make_shared<MockPendingTransactionStorage>();
 
         auto query_executor_result = storage->createQueryExecutor(
             pending_txs_storage, query_response_factory);
