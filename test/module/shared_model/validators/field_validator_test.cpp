@@ -329,6 +329,14 @@ class FieldValidatorTest : public ValidatorsTest {
   std::vector<FieldTestCase> asset_id_test_cases = idTestCases(
       "asset_id", &FieldValidatorTest::asset_id, '#', {'A', '-', ' '}, 32);
 
+  std::vector<FieldTestCase> callee_cases{
+      {"empty", [&] { callee.reset(); }, true, "contract creation case"},
+      {"zero", [&] { callee = ""; }, false, ""},
+      {"short", [&] { callee = std::string(38, 'a'); }, false, ""},
+      {"just fine", [&] { callee = std::string(40, 'a'); }, true, ""},
+      {"garbage", [&] { callee = std::string(40, 'z'); }, false, ""},
+      {"long", [&] { callee = std::string(42, 'a'); }, false, ""}};
+
   std::vector<FieldTestCase> amount_test_cases{
       {"valid_amount", [&] { amount = "100"; }, true, ""},
       {"zero_amount",
@@ -735,6 +743,21 @@ class FieldValidatorTest : public ValidatorsTest {
           &FieldValidatorTest::amount,
           [](auto &&x) { return shared_model::interface::Amount(x); },
           amount_test_cases),
+      makeValidator("caller",
+                    &FieldValidator::validateAccountName,
+                    &FieldValidatorTest::account_name,
+                    account_name_test_cases),
+      std::make_pair("callee",
+                     FieldTest{[this] {
+                                 if (callee) {
+                                   return field_validator.validateEvmHexAddress(
+                                       callee.value());
+                                 }
+                                 return decltype(
+                                     field_validator.validateEvmHexAddress(
+                                         callee.value())){};
+                               },
+                               callee_cases}),
       makeTransformValidator("peer",
                              &FieldValidator::validatePeer,
                              &FieldValidatorTest::peer,
@@ -788,7 +811,8 @@ class FieldValidatorTest : public ValidatorsTest {
           &FieldValidator::validateTxPaginationMeta,
           &FieldValidatorTest::tx_pagination_meta,
           [](auto &&x) { return proto::TxPaginationMeta(x); },
-          tx_pagination_meta_test_cases)};
+          tx_pagination_meta_test_cases),
+      std::make_pair("type", FieldTest{[] { return std::nullopt; }, {}})};
 };
 
 /**

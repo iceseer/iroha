@@ -12,6 +12,7 @@
 #include <boost/range/algorithm/for_each.hpp>
 #include <boost/range/irange.hpp>
 
+#include "commands.pb.h"
 #include "datetime/time.hpp"
 #include "interfaces/permissions.hpp"
 #include "primitive.pb.h"
@@ -100,10 +101,16 @@ class ValidatorsTest : public ::testing::Test {
         {"iroha.protocol.AddAssetQuantity.amount", setString(amount)},
         {"iroha.protocol.TransferAsset.amount", setString(amount)},
         {"iroha.protocol.SubtractAssetQuantity.amount", setString(amount)},
-        {"iroha.protocol.CallEngine.type",
-         setEnum(iroha::protocol::CallEngine::EngineType::
-                     CallEngine_EngineType_kSolidity)},
-        {"iroha.protocol.CallEngine.callee", setString(callee)},
+        {"iroha.protocol.CallEngine.type", setEnum(engine_type)},
+        {"iroha.protocol.CallEngine.caller", setString(account_id)},
+        {"iroha.protocol.CallEngine.callee",
+         [this](auto refl, auto msg, auto field) {
+           if (callee) {
+             refl->SetString(msg, field, callee.value());
+           } else {
+             refl->ClearOneof(msg, field->containing_oneof());
+           }
+         }},
         {"iroha.protocol.CallEngine.input", setString(input)},
         {"iroha.protocol.AddPeer.peer",
          [&](auto refl, auto msg, auto field) {
@@ -247,7 +254,9 @@ class ValidatorsTest : public ::testing::Test {
     domain_id = "ru";
     detail_key = "key";
     writer = "account@domain";
-    callee = "smartContractWillAddressTo";
+    callee = std::string(40, 'a');
+    engine_type = iroha::protocol::CallEngine::EngineType::
+        CallEngine_EngineType_kSolidity;
     input =
         "606060405260a18060106000396000f360606040526000357c01000000000000000"
         "0000000000000000000000000000000000000000090048063d46300fd1460435780"
@@ -292,7 +301,8 @@ class ValidatorsTest : public ::testing::Test {
   std::string public_key;
   std::string hash;
   std::string writer;
-  std::string callee;
+  std::optional<std::string> callee;
+  iroha::protocol::CallEngine::EngineType engine_type;
   std::string input;
   iroha::protocol::Transaction::Payload::BatchMeta batch_meta;
   shared_model::interface::permissions::Role model_role_permission;
