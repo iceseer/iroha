@@ -301,6 +301,11 @@ CREATE TABLE IF NOT EXISTS tx_position_by_creator (
     height bigint,
     index bigint
 );
+CREATE INDEX IF NOT EXISTS tx_position_by_creator_index
+    ON tx_position_by_creator
+    USING btree
+    (height, index ASC);
+
 CREATE TABLE IF NOT EXISTS position_by_account_asset (
     account_id text,
     asset_id text,
