@@ -41,7 +41,7 @@ namespace {
                      shared_model::proto::GetPendingTransactions,
                      shared_model::proto::GetBlock,
                      shared_model::proto::GetPeers,
-                     shared_model::proto::GetEngineResponse>;
+                     shared_model::proto::GetEngineReceipts>;
 
   /// list of types in proto variant
   using ProtoQueryListType = ProtoQueryVariantType::types;
