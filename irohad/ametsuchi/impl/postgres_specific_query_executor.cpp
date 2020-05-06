@@ -1414,12 +1414,12 @@ namespace iroha {
         const shared_model::interface::types::AccountIdType &creator_id,
         const shared_model::interface::types::HashType &query_hash) {
 
-      char const *target_request = "select creator_id "
+      char const *target_request = "select creator_id  as target"
                       "from position_by_hash "
                       "inner join tx_position_by_creator "
                       "on hash=:tx_hash and "
                       "position_by_hash.height = tx_position_by_creator.height and "
-                      "position_by_hash.index = tx_position_by_creator.index as target";
+                      "position_by_hash.index = tx_position_by_creator.index";
 
       auto cmd = fmt::format(R"(
             with  has_perms AS ({}),
