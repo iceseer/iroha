@@ -106,7 +106,7 @@ namespace {
         R"(
     WITH
         target AS ({7}),
-        target_domain AS (split_part(target, '@', 2)),
+        target_domain AS (select split_part(target.target, '@', 2) from target),
         has_root_perm AS ({0}),
         has_indiv_perm AS (
           SELECT (COALESCE(bit_or(rp.permission), '0'::bit({1}))
@@ -149,7 +149,7 @@ namespace {
       Role all_permission_id,
       Role domain_permission_id) {
     return hasQueryPermissionInternal(creator,
-      fmt::format("SELECT '{}'", target_account),
+      fmt::format("select '{}' as target", target_account),
       indiv_permission_id,
       all_permission_id,
       domain_permission_id);
