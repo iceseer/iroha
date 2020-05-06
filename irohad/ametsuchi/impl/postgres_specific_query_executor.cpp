@@ -1419,7 +1419,7 @@ namespace iroha {
                       "inner join tx_position_by_creator "
                       "on hash=:tx_hash and "
                       "position_by_hash.height = tx_position_by_creator.height and "
-                      "position_by_hash.index = tx_position_by_creator.index;";
+                      "position_by_hash.index = tx_position_by_creator.index as target";
 
       auto cmd = fmt::format(R"(
             with  has_perms AS ({}),
@@ -1441,7 +1441,8 @@ namespace iroha {
             from engine_calls
             inner join creator on engine_calls.tx_hash = creator.hash
             inner join burrow_tx_logs on engine_calls.call_id = burrow_tx_logs.call_id
-            inner join burrow_tx_logs_topics on burrow_tx_logs.log_idx = burrow_tx_logs_topics.log_idx;
+            inner join burrow_tx_logs_topics on burrow_tx_logs.log_idx = burrow_tx_logs_topics.log_idx
+            RIGHT OUTER JOIN has_perms ON TRUE;
             )",
              hasQueryPermissionTargetRequest(creator_id,
                     target_request,
