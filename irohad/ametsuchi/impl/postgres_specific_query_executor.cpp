@@ -106,7 +106,7 @@ namespace {
         R"(
     WITH
         target AS ({7}),
-        target_domain AS (select split_part(target.target, '@', 2) from target),
+        target_domain AS (select split_part(target.t, '@', 2) as td from target),
         has_root_perm AS ({0}),
         has_indiv_perm AS (
           SELECT (COALESCE(bit_or(rp.permission), '0'::bit({1}))
@@ -127,9 +127,9 @@ namespace {
               WHERE ar.account_id = '{2}'
         )
     SELECT (SELECT * from has_root_perm)
-        OR ('{2}' = target AND (SELECT * FROM has_indiv_perm))
+        OR ('{2}' = (select t from target) AND (SELECT * FROM has_indiv_perm))
         OR (SELECT * FROM has_all_perm)
-        OR ('{6}' = target_domain AND (SELECT * FROM has_domain_perm)) AS perm
+        OR ('{6}' = (select td from target_domain) AND (SELECT * FROM has_domain_perm)) AS perm
     )",
         getAccountRolePermissionCheckSql(Role::kRoot, creator_quoted),
         bits,
@@ -149,7 +149,7 @@ namespace {
       Role all_permission_id,
       Role domain_permission_id) {
     return hasQueryPermissionInternal(creator,
-      fmt::format("select '{}' as target", target_account),
+      fmt::format("select '{}'::text as t", target_account),
       indiv_permission_id,
       all_permission_id,
       domain_permission_id);
@@ -1414,7 +1414,7 @@ namespace iroha {
         const shared_model::interface::types::AccountIdType &creator_id,
         const shared_model::interface::types::HashType &query_hash) {
 
-      char const *target_request = "select creator_id  as target"
+      char const *target_request = "select creator_id  as t"
                       "from position_by_hash "
                       "inner join tx_position_by_creator "
                       "on hash=:tx_hash and "
@@ -1508,7 +1508,7 @@ namespace iroha {
                         std::optional<shared_model::interface::types::EvmAddressHexString> const &contract_address,
                         shared_model::interface::types::EvmAddressHexString const *&target)
                     {
-                      assert((!callee && !!contract_address) || (!!callee && !contract_address));
+                      assert(!callee != !contract_address);
                       if (!!callee) {
                           target = &(*callee);
                           return shared_model::interface::EngineReceipt::PayloadType::kPayloadTypeCallee;
