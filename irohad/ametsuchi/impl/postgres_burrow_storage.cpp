@@ -116,8 +116,8 @@ Result<void, std::string> PostgresBurrowStorage::storeTxReceipt(
     std::optional<size_t> log_idx;
 
     if (call_id_cache_) {
-      sql_ << "insert into burrow_tx_logs (:call_id, address, data) "
-              "values (lower(:tx_hash), :cmd_index, lower(:address), :data) "
+      sql_ << "insert into burrow_tx_logs (call_id, address, data) "
+              "values (:call_id, lower(:address), :data) "
               "returning log_idx",
           soci::use(call_id_cache_.value(), "call_id"),
           soci::use(address, "address"), soci::use(data, "data"),
@@ -151,15 +151,11 @@ Result<void, std::string> PostgresBurrowStorage::storeTxReceipt(
     if (not call_id_cache_ or not log_idx) {
       return makeError("could not insert log data");
     }
-    std::vector<int> check{0, static_cast<int>(topics.size())};
-    sql_ << "insert into burrow_tx_logs_topics (topic, log_idx) "
-            "values (lower(:topic), :log_idx) "
-            "returning 1",
-        soci::use(topics, "topic"), soci::use(log_idx.value(), "log_idx"),
-        soci::into(check);
-    if (not std::all_of(
-            check.begin(), check.end(), [](int i) { return i == 1; })) {
-      return makeError("could not insert log topics");
+    if (not topics.empty()) {
+      std::vector<size_t> log_idxs(topics.size(), log_idx.value());
+      sql_ << "insert into burrow_tx_logs_topics (topic, log_idx) "
+              "values (lower(:topic), :log_idx)",
+          soci::use(topics, "topic"), soci::use(log_idxs, "log_idx");
     }
     return Value<void>{};
   } catch (std::exception const &e) {

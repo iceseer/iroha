@@ -16,6 +16,7 @@
 #include "ametsuchi/impl/soci_std_optional.hpp"
 #include "ametsuchi/impl/soci_string_view.hpp"
 #include "common/result.hpp"
+#include "framework/result_gtest_checkers.hpp"
 #include "framework/test_db_manager.hpp"
 #include "framework/test_logger.hpp"
 #include "logger/logger_manager.hpp"
@@ -46,8 +47,24 @@ TEST_F(PostgresBurrowStorageTest, Store2Receipts) {
   const auto data2{"Semki"sv};
 
   // when
-  storage_.storeTxReceipt(addr, data1, {});
-  storage_.storeTxReceipt(addr, data2, {});
+  IROHA_ASSERT_RESULT_VALUE(storage_.storeTxReceipt(addr, data1, {}));
+  IROHA_ASSERT_RESULT_VALUE(storage_.storeTxReceipt(addr, data2, {}));
+
+  // then
+  // TODO -- use GetEngineReceipts query?
+}
+
+TEST_F(PostgresBurrowStorageTest, StoreReceiptWith3Topics) {
+  // given
+  const auto addr{"Mytischi"sv};
+  const auto data{"Achtung"sv};
+  const auto topic1{"gop"sv};
+  const auto topic2{"stop"sv};
+  const auto topic3{"musorok"sv};
+
+  // when
+  IROHA_ASSERT_RESULT_VALUE(
+      storage_.storeTxReceipt(addr, data, {topic1, topic2, topic3}));
 
   // then
   // TODO -- use GetEngineReceipts query?
