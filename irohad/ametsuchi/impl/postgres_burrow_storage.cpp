@@ -155,7 +155,7 @@ Result<void, std::string> PostgresBurrowStorage::storeTxReceipt(
     sql_ << "insert into burrow_tx_logs_topics (topic, log_idx) "
             "values (lower(:topic), :log_idx) "
             "returning 1",
-        soci::use(topics, ":topic"), soci::use(log_idx.value(), "log_idx"),
+        soci::use(topics, "topic"), soci::use(log_idx.value(), "log_idx"),
         soci::into(check);
     if (not std::all_of(
             check.begin(), check.end(), [](int i) { return i == 1; })) {
