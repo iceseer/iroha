@@ -9,12 +9,14 @@
 #include <gtest/gtest.h>
 #include <boost/format.hpp>
 #include "ametsuchi/burrow_storage.hpp"
+#include "ametsuchi/impl/block_index.hpp"
 #include "backend/protobuf/queries/proto_get_engine_response.hpp"
 #include "backend/protobuf/queries/proto_query.hpp"
 #include "framework/common_constants.hpp"
 #include "integration/executor/query_permission_test.hpp"
 #include "interfaces/query_responses/engine_response_record.hpp"
 #include "module/irohad/ametsuchi/mock_vm_caller.hpp"
+#include "module/shared_model/builders/protobuf/test_block_builder.hpp"
 #include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "queries.pb.h"
 
@@ -130,7 +132,20 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
         .WillRepeatedly(
             ::testing::Return(iroha::expected::makeValue("success")));
 
-    IROHA_ASSERT_RESULT_VALUE(getItf().executeTransaction(tx_builder.build()));
+    const auto tx = tx_builder.build();
+    IROHA_ASSERT_RESULT_VALUE(getItf().executeTransaction(tx));
+
+    {
+      const auto block =
+          TestBlockBuilder()
+              .transactions(std::vector<shared_model::proto::Transaction>{tx})
+              .height(1)
+              .prevHash(shared_model::crypto::Hash{"prev_hash"})
+              .createdTime(iroha::time::now())
+              .build();
+      const auto block_indexer = getBackendParam()->getBlockIndexer();
+      block_indexer->index(block);
+    }
   }
 };
 
