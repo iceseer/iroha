@@ -128,7 +128,7 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
 
     EXPECT_CALL(*getBackendParam()->vm_caller_, call(_, _, _, _, _, _, _, _))
         .WillRepeatedly(
-            ::testing::Return(iroha::expected::makeError("success")));
+            ::testing::Return(iroha::expected::makeValue("success")));
 
     IROHA_ASSERT_RESULT_VALUE(getItf().executeTransaction(tx_builder.build()));
   }
