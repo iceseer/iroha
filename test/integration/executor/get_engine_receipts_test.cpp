@@ -107,7 +107,7 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
     SCOPED_TRACE("prepareState");
     getItf().createDomain(kSecondDomain);
 
-    auto tx_builder = TestTransactionBuilder{};
+    auto tx_builder = TestTransactionBuilder{}.creatorAccountId(kUserId);
 
     {  // cmd 1
       const auto burrow_storage =
