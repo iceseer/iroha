@@ -158,7 +158,7 @@ using GetEngineReceiptsPermissionTest =
     query_permission_test::QueryPermissionTest<GetEngineReceiptsTest>;
 
 TEST_P(GetEngineReceiptsPermissionTest, QueryPermissionTest) {
-  ASSERT_NO_FATAL_FAILURE(prepareState({}));
+  ASSERT_NO_FATAL_FAILURE(prepareState({Role::kCallEngine}));
   GetEngineReceiptsTest::prepareState();
   checkResponse<shared_model::interface::EngineReceiptsResponse>(
       getEngineReceipts(kTxHash, getSpectator()),
