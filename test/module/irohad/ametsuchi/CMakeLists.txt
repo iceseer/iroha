@@ -141,7 +141,7 @@ if(USE_BURROW)
 
   addtest(postgres_burrow_storage_test postgres_burrow_storage_test.cpp)
   target_link_libraries(postgres_burrow_storage_test
-      burrow_storage
+      postgres_burrow_storage
       test_db_manager
       test_logger
       )
