@@ -14,6 +14,8 @@
 #include "framework/common_constants.hpp"
 #include "integration/executor/query_permission_test.hpp"
 #include "interfaces/query_responses/engine_response_record.hpp"
+#include "module/irohad/ametsuchi/mock_vm_caller.hpp"
+#include "module/shared_model/builders/protobuf/test_transaction_builder.hpp"
 #include "queries.pb.h"
 
 using namespace common_constants;
@@ -28,6 +30,8 @@ using shared_model::interface::permissions::Role;
 static const std::string kTxHash{"hash"};
 static const CommandIndexType kCmdIndex1{123ul};
 static const CommandIndexType kCmdIndex2{456ul};
+static const EvmCodeHexString kContractCode{"sit on a bench and have a rest"};
+static const EvmCodeHexString kEvmInput{"summon satan"};
 
 static const EvmAddressHexString kAddress1{"Patriarch's Ponds"};
 static const EvmDataHexString kData1{"Ann has spilt the oil."};
@@ -102,13 +106,14 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
   void prepareState() {
     SCOPED_TRACE("prepareState");
     getItf().createDomain(kSecondDomain);
-    IROHA_ASSERT_RESULT_VALUE(getItf().createUserWithPerms(
-        kUser, kDomain, kUserKeypair.publicKey(), {}));
+
+    auto tx_builder = TestTransactionBuilder{};
 
     {  // cmd 1
       const auto burrow_storage =
           getBackendParam()->makeBurrowStorage(kTxHash, kCmdIndex1);
       burrow_storage->storeTxReceipt(kAddress1, kData1, {kTopic1_1, kTopic1_2});
+      tx_builder = tx_builder.callEngine(kUserId, std::nullopt, kContractCode);
     }
 
     {  // cmd 2
@@ -117,7 +122,15 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
       burrow_storage->storeTxReceipt(kAddress2, kData2, {});
       burrow_storage->storeTxReceipt(
           kAddress3, kData3, {kTopic3_1, kTopic3_2, kTopic3_3, kTopic3_4});
+      tx_builder = tx_builder.callEngine(
+          kUserId, std::optional<EvmCalleeHexString>{kAddress1}, kEvmInput);
     }
+
+    EXPECT_CALL(*getBackendParam()->vm_caller_, call(_, _, _, _, _, _, _, _))
+        .WillRepeatedly(
+            ::testing::Return(iroha::expected::makeError("success")));
+
+    IROHA_ASSERT_RESULT_VALUE(getItf().executeTransaction(tx_builder.build()));
   }
 };
 
@@ -146,8 +159,8 @@ using GetEngineReceiptsPermissionTest =
 
 TEST_P(GetEngineReceiptsPermissionTest, QueryPermissionTest) {
   ASSERT_NO_FATAL_FAILURE(prepareState({}));
-  // prepareState();
-  checkSuccessfulResult<shared_model::interface::EngineReceiptsResponse>(
+  GetEngineReceiptsTest::prepareState();
+  checkResponse<shared_model::interface::EngineReceiptsResponse>(
       getEngineReceipts(kTxHash, getSpectator()),
       [](const shared_model::interface::EngineReceiptsResponse &response) {
         EXPECT_THAT(response, kSpecificResponseChecker);
