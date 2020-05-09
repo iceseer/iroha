@@ -29,8 +29,6 @@ using iroha::ametsuchi::QueryExecutorResult;
 using shared_model::interface::Amount;
 using shared_model::interface::permissions::Role;
 
-static const CommandIndexType kCmdIndex1{123ul};
-static const CommandIndexType kCmdIndex2{456ul};
 static const EvmCodeHexString kContractCode{"sit on a bench and have a rest"};
 static const EvmCodeHexString kEvmInput{"summon satan"};
 
@@ -117,16 +115,17 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
                               kEvmInput)
                   .build();
     std::string tx_hash = tx.hash().hex();
+    CommandIndexType cmd_idx = 0;
 
     {  // cmd 1
       const auto burrow_storage =
-          getBackendParam()->makeBurrowStorage(tx_hash, kCmdIndex1);
+          getBackendParam()->makeBurrowStorage(tx_hash, cmd_idx);
       burrow_storage->storeTxReceipt(kAddress1, kData1, {kTopic1_1, kTopic1_2});
     }
 
     {  // cmd 2
       const auto burrow_storage =
-          getBackendParam()->makeBurrowStorage(tx_hash, kCmdIndex2);
+          getBackendParam()->makeBurrowStorage(tx_hash, ++cmd_idx);
       burrow_storage->storeTxReceipt(kAddress2, kData2, {});
       burrow_storage->storeTxReceipt(
           kAddress3, kData3, {kTopic3_1, kTopic3_2, kTopic3_3, kTopic3_4});
