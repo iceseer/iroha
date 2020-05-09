@@ -25,6 +25,8 @@ using namespace executor_testing;
 using namespace framework::expected;
 using namespace shared_model::interface::types;
 
+using testing::_;
+
 using iroha::ametsuchi::QueryExecutorResult;
 using shared_model::interface::Amount;
 using shared_model::interface::permissions::Role;
@@ -47,48 +49,48 @@ static const EvmDataHexString kTopic3_2{"deal"};
 static const EvmDataHexString kTopic3_3{"fate"};
 static const EvmDataHexString kTopic3_4{"Walpurgisnacht"};
 
-namespace {
-  using namespace shared_model::interface;
+static const std::string kCall2Result{"Falernus wine"};
+
+const testing::Matcher<shared_model::interface::EngineReceiptsResponse const &>
+getSpecificResponseChecker() {
   using namespace testing;
-  const testing::Matcher<
-      shared_model::interface::EngineReceiptsResponse const &>
-      kSpecificResponseChecker{Property(
-          &EngineReceiptsResponse::engineReceipts,
-          UnorderedElementsAre(
-              Matcher<EngineReceipt const &>(AllOf(
-                  Property(&EngineReceipt::getCaller, kUserId),
-                  Property(
-                      &EngineReceipt::getPayloadType,
-                      EngineReceipt::PayloadType::kPayloadTypeContractAddress),
-                  Property(&EngineReceipt::getPayload, kAddress1),
-                  Property(&EngineReceipt::getEngineLogs,
-                           UnorderedElementsAre(Pointee(AllOf(
-                               Property(&EngineLog::getAddress, kAddress1),
-                               Property(&EngineLog::getData, kData1),
-                               Property(&EngineLog::getTopics,
-                                        UnorderedElementsAre(kTopic1_1,
-                                                             kTopic1_2)))))))),
-              Matcher<EngineReceipt const &>(AllOf(
-                  Property(&EngineReceipt::getCaller, kUserId),
-                  Property(&EngineReceipt::getPayloadType,
-                           EngineReceipt::PayloadType::kPayloadTypeCallee),
-                  Property(&EngineReceipt::getPayload, kAddress1),
-                  Property(&EngineReceipt::getEngineLogs,
-                           UnorderedElementsAre(
-                               Pointee(AllOf(
-                                   Property(&EngineLog::getAddress, kAddress2),
-                                   Property(&EngineLog::getData, kData2),
-                                   Property(&EngineLog::getTopics, IsEmpty()))),
-                               Pointee(AllOf(
-                                   Property(&EngineLog::getAddress, kAddress3),
-                                   Property(&EngineLog::getData, kData3),
-                                   Property(&EngineLog::getTopics,
-                                            UnorderedElementsAre(
-                                                kTopic3_1,
-                                                kTopic3_2,
-                                                kTopic3_3,
-                                                kTopic3_4))))))))))};
-}  // namespace
+  using namespace shared_model::interface;
+  return Property(
+      &EngineReceiptsResponse::engineReceipts,
+      ElementsAre(
+          Matcher<EngineReceipt const &>(AllOf(
+              Property(&EngineReceipt::getCaller, kUserId),
+              Property(&EngineReceipt::getPayloadType,
+                       EngineReceipt::PayloadType::kPayloadTypeContractAddress),
+              Property(&EngineReceipt::getPayload, kAddress1),
+              Property(&EngineReceipt::getEngineLogs,
+                       ElementsAre(Pointee(
+                           AllOf(Property(&EngineLog::getAddress, kAddress1),
+                                 Property(&EngineLog::getData, kData1),
+                                 Property(&EngineLog::getTopics,
+                                          UnorderedElementsAre(
+                                              kTopic1_1, kTopic1_2)))))))),
+          Matcher<EngineReceipt const &>(AllOf(
+              Property(&EngineReceipt::getCaller, kUserId),
+              Property(&EngineReceipt::getPayloadType,
+                       EngineReceipt::PayloadType::kPayloadTypeCallee),
+              Property(&EngineReceipt::getPayload, kCall2Result),
+              Property(
+                  &EngineReceipt::getEngineLogs,
+                  ElementsAre(
+                      Pointee(
+                          AllOf(Property(&EngineLog::getAddress, kAddress2),
+                                Property(&EngineLog::getData, kData2),
+                                Property(&EngineLog::getTopics, IsEmpty()))),
+                      Pointee(AllOf(Property(&EngineLog::getAddress, kAddress3),
+                                    Property(&EngineLog::getData, kData3),
+                                    Property(&EngineLog::getTopics,
+                                             UnorderedElementsAre(
+                                                 kTopic3_1,
+                                                 kTopic3_2,
+                                                 kTopic3_3,
+                                                 kTopic3_4))))))))));
+}
 
 struct GetEngineReceiptsTest : public ExecutorTestBase {
   QueryExecutorResult getEngineReceipts(std::string const &tx_hash,
@@ -116,11 +118,24 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
                   .build();
     std::string tx_hash = tx.hash().hex();
     CommandIndexType cmd_idx = 0;
+    testing::Expectation vm_call_expectation;
 
     {  // cmd 1
       const auto burrow_storage =
           getBackendParam()->makeBurrowStorage(tx_hash, cmd_idx);
       burrow_storage->storeTxReceipt(kAddress1, kData1, {kTopic1_1, kTopic1_2});
+      vm_call_expectation =
+          EXPECT_CALL(*getBackendParam()->vm_caller_,
+                      call(_,
+                           tx_hash,
+                           cmd_idx,
+                           kContractCode,
+                           kUserId,
+                           std::optional<EvmCalleeHexStringView>{},
+                           _,
+                           _))
+              .WillOnce(
+                  ::testing::Return(iroha::expected::makeValue(kAddress1)));
     }
 
     {  // cmd 2
@@ -129,11 +144,20 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
       burrow_storage->storeTxReceipt(kAddress2, kData2, {});
       burrow_storage->storeTxReceipt(
           kAddress3, kData3, {kTopic3_1, kTopic3_2, kTopic3_3, kTopic3_4});
+      vm_call_expectation =
+          EXPECT_CALL(*getBackendParam()->vm_caller_,
+                      call(_,
+                           tx_hash,
+                           cmd_idx,
+                           kEvmInput,
+                           kUserId,
+                           std::optional<EvmCalleeHexStringView>(kAddress1),
+                           _,
+                           _))
+              .After(vm_call_expectation)
+              .WillOnce(
+                  ::testing::Return(iroha::expected::makeValue(kCall2Result)));
     }
-
-    EXPECT_CALL(*getBackendParam()->vm_caller_, call(_, _, _, _, _, _, _, _))
-        .WillRepeatedly(
-            ::testing::Return(iroha::expected::makeValue("success")));
 
     if (auto e = resultToOptionalError(getItf().executeTransaction(tx))) {
       throw std::runtime_error(e->command_error.toString());
@@ -184,7 +208,7 @@ TEST_P(GetEngineReceiptsPermissionTest, QueryPermissionTest) {
   checkResponse<shared_model::interface::EngineReceiptsResponse>(
       getEngineReceipts(tx_hash, getSpectator()),
       [](const shared_model::interface::EngineReceiptsResponse &response) {
-        EXPECT_THAT(response, kSpecificResponseChecker);
+        EXPECT_THAT(response, getSpecificResponseChecker());
       });
 }
 
