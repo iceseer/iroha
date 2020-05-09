@@ -29,7 +29,6 @@ using iroha::ametsuchi::QueryExecutorResult;
 using shared_model::interface::Amount;
 using shared_model::interface::permissions::Role;
 
-static const std::string kTxHash{"hash"};
 static const CommandIndexType kCmdIndex1{123ul};
 static const CommandIndexType kCmdIndex2{456ul};
 static const EvmCodeHexString kContractCode{"sit on a bench and have a rest"};
@@ -105,35 +104,41 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
         shared_model::proto::GetEngineReceipts{proto_query}, issuer);
   }
 
-  void prepareState() {
+  /// @return hex hash of transaction that contains the call engine commands
+  std::string prepareState() {
     SCOPED_TRACE("prepareState");
     getItf().createDomain(kSecondDomain);
 
-    auto tx_builder = TestTransactionBuilder{}.creatorAccountId(kUserId);
+    auto tx = TestTransactionBuilder{}
+                  .creatorAccountId(kUserId)
+                  .callEngine(kUserId, std::nullopt, kContractCode)
+                  .callEngine(kUserId,
+                              std::optional<EvmCalleeHexString>{kAddress1},
+                              kEvmInput)
+                  .build();
+    std::string tx_hash = tx.hash().hex();
 
     {  // cmd 1
       const auto burrow_storage =
-          getBackendParam()->makeBurrowStorage(kTxHash, kCmdIndex1);
+          getBackendParam()->makeBurrowStorage(tx_hash, kCmdIndex1);
       burrow_storage->storeTxReceipt(kAddress1, kData1, {kTopic1_1, kTopic1_2});
-      tx_builder = tx_builder.callEngine(kUserId, std::nullopt, kContractCode);
     }
 
     {  // cmd 2
       const auto burrow_storage =
-          getBackendParam()->makeBurrowStorage(kTxHash, kCmdIndex2);
+          getBackendParam()->makeBurrowStorage(tx_hash, kCmdIndex2);
       burrow_storage->storeTxReceipt(kAddress2, kData2, {});
       burrow_storage->storeTxReceipt(
           kAddress3, kData3, {kTopic3_1, kTopic3_2, kTopic3_3, kTopic3_4});
-      tx_builder = tx_builder.callEngine(
-          kUserId, std::optional<EvmCalleeHexString>{kAddress1}, kEvmInput);
     }
 
     EXPECT_CALL(*getBackendParam()->vm_caller_, call(_, _, _, _, _, _, _, _))
         .WillRepeatedly(
             ::testing::Return(iroha::expected::makeValue("success")));
 
-    const auto tx = tx_builder.build();
-    IROHA_ASSERT_RESULT_VALUE(getItf().executeTransaction(tx));
+    if (auto e = resultToOptionalError(getItf().executeTransaction(tx))) {
+      throw std::runtime_error(e->command_error.toString());
+    }
 
     {
       const auto block =
@@ -146,6 +151,8 @@ struct GetEngineReceiptsTest : public ExecutorTestBase {
       const auto block_indexer = getBackendParam()->getBlockIndexer();
       block_indexer->index(block);
     }
+
+    return tx_hash;
   }
 };
 
@@ -158,7 +165,7 @@ using GetEngineReceiptsBasicTest = BasicExecutorTest<GetEngineReceiptsTest>;
  */
 TEST_P(GetEngineReceiptsBasicTest, NoReceipts) {
   checkSuccessfulResult<shared_model::interface::EngineReceiptsResponse>(
-      getEngineReceipts(kTxHash, kAdminId), [](const auto &response) {
+      getEngineReceipts("no such hash", kAdminId), [](const auto &response) {
         using namespace testing;
         EXPECT_EQ(boost::size(response.engineReceipts()), 0);
       });
@@ -174,9 +181,9 @@ using GetEngineReceiptsPermissionTest =
 
 TEST_P(GetEngineReceiptsPermissionTest, QueryPermissionTest) {
   ASSERT_NO_FATAL_FAILURE(prepareState({Role::kCallEngine}));
-  GetEngineReceiptsTest::prepareState();
+  const auto tx_hash = GetEngineReceiptsTest::prepareState();
   checkResponse<shared_model::interface::EngineReceiptsResponse>(
-      getEngineReceipts(kTxHash, getSpectator()),
+      getEngineReceipts(tx_hash, getSpectator()),
       [](const shared_model::interface::EngineReceiptsResponse &response) {
         EXPECT_THAT(response, kSpecificResponseChecker);
       });
