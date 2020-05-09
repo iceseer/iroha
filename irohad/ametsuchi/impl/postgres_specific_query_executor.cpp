@@ -1502,6 +1502,14 @@ namespace iroha {
                                   auto &log_data,
                                   auto &log_topic
                                   ) {
+                    if (!cmd_index ||
+                        !account_id_type ||
+                        !logs_ix ||
+                        !log_address ||
+                        !log_data ||
+                        !log_topic)
+                        return;
+
                     auto payloadToPayloadType = [](
                         std::optional<shared_model::interface::types::EvmAddressHexString> const &callee,
                         std::optional<shared_model::interface::types::EvmAddressHexString> const &contract_address,
