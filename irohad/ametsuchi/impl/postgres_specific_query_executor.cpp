@@ -1434,6 +1434,7 @@ namespace iroha {
                     creator.creator_id,
                     engine_calls.callee,
                     engine_calls.created_address,
+                    engine_calls.engine_response,
                     burrow_tx_logs.log_idx,
                     burrow_tx_logs.address,
                     burrow_tx_logs.data,
@@ -1456,8 +1457,9 @@ namespace iroha {
           QueryType<
               shared_model::interface::types::CommandIndexType,
               shared_model::interface::types::AccountIdType,
+              shared_model::interface::types::EvmDataHexString,
               shared_model::interface::types::EvmAddressHexString,
-              shared_model::interface::types::EvmAddressHexString,
+              shared_model::interface::types::EvmDataHexString,
               uint32_t,
               shared_model::interface::types::EvmAddressHexString,
               shared_model::interface::types::EvmDataHexString,
@@ -1496,6 +1498,7 @@ namespace iroha {
                                   auto &account_id_type,
                                   auto &payload_callee,
                                   auto &payload_cantract_address,
+                                  auto &engine_response,
                                   auto &logs_ix,
                                   auto &log_address,
                                   auto &log_data,
@@ -1517,7 +1520,7 @@ namespace iroha {
                       assert(!callee != !contract_address);
                       if (!!callee) {
                           target = &(*callee);
-                          return shared_model::interface::EngineReceipt::PayloadType::kPayloadTypeCallee;
+                          return shared_model::interface::EngineReceipt::PayloadType::kPayloadTypeCallResult;
                       }
                       target = &(*contract_address);
                       return shared_model::interface::EngineReceipt::PayloadType::kPayloadTypeContractAddress;
@@ -1531,7 +1534,8 @@ namespace iroha {
                                     *cmd_index,
                                     *account_id_type,
                                     pt,
-                                    *target
+                                    *target,
+                                    engine_response
                                  );
                       } else if (*cmd_index != record->getCommandIndex()) {
                         store_record(records, std::move(record), std::move(log));
@@ -1539,7 +1543,8 @@ namespace iroha {
                                     *cmd_index,
                                     *account_id_type,
                                     pt,
-                                    *target
+                                    *target,
+                                    engine_response
                                  );
                       }
                     }
