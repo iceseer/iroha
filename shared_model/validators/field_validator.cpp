@@ -103,8 +103,6 @@ namespace {
   const RegexValidator kAccountDetailKeyValidator{"DetailKey",
                                                   R"([A-Za-z0-9_]{1,64})"};
   const RegexValidator kRoleIdValidator{"RoleId", R"#([a-z_0-9]{1,32})#"};
-  const RegexValidator kHexValidator{
-      "Hex", R"#(([0-9a-fA-F][0-9a-fA-F])*)#", "Hex encoded string expected"};
   const RegexValidator kPublicKeyHexValidator{
       "PublicKeyHex",
       fmt::format("[A-Fa-f0-9]{{1,{}}}",
@@ -114,7 +112,7 @@ namespace {
       fmt::format("[A-Fa-f0-9]{{1,{}}}",
                   shared_model::crypto::CryptoVerifier::kMaxSignatureSize * 2)};
   const RegexValidator kHexValidator{
-    "Hex", 
+    "Hex",
     R"#(([0-9a-fA-F][0-9a-fA-F])*)#",
     "Hex encoded string expected"
   };

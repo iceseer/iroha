@@ -22,7 +22,6 @@
 #include "ametsuchi/impl/soci_utils.hpp"
 #include "ametsuchi/vm_caller.hpp"
 #include "cryptography/hash.hpp"
-#include "cryptography/public_key.hpp"
 #include "interfaces/commands/add_asset_quantity.hpp"
 #include "interfaces/commands/add_peer.hpp"
 #include "interfaces/commands/add_signatory.hpp"

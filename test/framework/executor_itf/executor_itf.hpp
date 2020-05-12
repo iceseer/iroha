@@ -251,7 +251,7 @@ namespace iroha {
           const std::string &account_name,
           const std::string &domain,
           shared_model::interface::types::PublicKeyHexStringView pubkey,
-          const shared_model::interface::RolePermissionSet &role_perms) const;
+          const shared_model::interface::RolePermissionSet &role_perms);
 
       /**
        * Create a domain.
@@ -290,7 +290,7 @@ namespace iroha {
           const std::string &account_name,
           const std::string &domain,
           shared_model::interface::types::PublicKeyHexStringView pubkey,
-          const shared_model::interface::RolePermissionSet &role_perms) const;
+          const shared_model::interface::RolePermissionSet &role_perms);
 
       /// Grant all grantable permissions of the given account to admin.
       iroha::ametsuchi::CommandResult grantAllToAdmin(

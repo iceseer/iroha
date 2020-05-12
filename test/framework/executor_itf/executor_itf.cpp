@@ -7,7 +7,6 @@
 
 #include "ametsuchi/specific_query_executor.hpp"
 #include "ametsuchi/tx_executor.hpp"
-#include "cryptography/signed.hpp"
 #include "framework/config_helper.hpp"
 #include "framework/test_logger.hpp"
 #include "interfaces/permissions.hpp"
@@ -113,7 +112,7 @@ CommandResult ExecutorItf::createUserWithPerms(
     const std::string &account_name,
     const std::string &domain,
     shared_model::interface::types::PublicKeyHexStringView pubkey,
-    const shared_model::interface::RolePermissionSet &role_perms) const {
+    const shared_model::interface::RolePermissionSet &role_perms) {
   return createUserWithPermsInternal(account_name, domain, pubkey, role_perms) |
       [&, this] { return this->grantAllToAdmin(account_name + "@" + domain); };
 }
@@ -154,7 +153,7 @@ CommandResult ExecutorItf::createUserWithPermsInternal(
     const std::string &account_name,
     const std::string &domain,
     shared_model::interface::types::PublicKeyHexStringView pubkey,
-    const shared_model::interface::RolePermissionSet &role_perms) const {
+    const shared_model::interface::RolePermissionSet &role_perms) {
   createDomain(domain);
 
   const std::string account_id = account_name + "@" + domain;

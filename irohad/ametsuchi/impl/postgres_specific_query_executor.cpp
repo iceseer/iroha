@@ -21,7 +21,6 @@
 #include "backend/plain/peer.hpp"
 #include "common/bind.hpp"
 #include "common/byteutils.hpp"
-#include "cryptography/public_key.hpp"
 #include "cryptography/hash.hpp"
 #include "interfaces/common_objects/amount.hpp"
 #include "interfaces/common_objects/string_types.hpp"
@@ -1401,7 +1400,7 @@ namespace iroha {
         const shared_model::interface::types::HashType &query_hash) {
       auto cmd = fmt::format(
           R"(
-            with  
+            with
               target as (
                 select creator_id  as t
                 from position_by_hash
