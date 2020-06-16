@@ -1,6 +1,0 @@
-[workspace]
-members = [
-  "parachain",
-  "parachain/crates/storehouse",
-  "parachain/iroha_runtime",
-]

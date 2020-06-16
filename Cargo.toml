@@ -7,5 +7,7 @@ members = [
   "iroha_macro",
   "iroha_macro/iroha_derive",
   "iroha_network",
-  "iroha_substrate",
+  "iroha_substrate/parachain",
+  "iroha_substrate/parachain/runtime",
+  "iroha_substrate/parachain/runtime/collator",
 ]

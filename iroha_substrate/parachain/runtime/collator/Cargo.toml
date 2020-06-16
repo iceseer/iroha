@@ -6,9 +6,9 @@ edition = "2018"
 
 [dependencies]
 runtime = { package = "iroha-runtime", path = ".." }
-parachain = { package = "polkadot-parachain", path = "../../.." }
-collator = { package = "polkadot-collator", path = "../../../../collator" }
-primitives = { package = "polkadot-primitives", path = "../../../../primitives" }
+parachain = { git = "https://github.com/paritytech/polkadot", package = "polkadot-parachain", tag = "v0.8.8" }
+collator = { git = "https://github.com/paritytech/polkadot", package = "polkadot-collator", tag = "v0.8.8" }
+primitives = { git = "https://github.com/paritytech/polkadot", package = "polkadot-primitives", tag = "v0.8.8" }
 sp-core = { git = "https://github.com/paritytech/substrate", branch = "master" }
 client-api = { package = "sc-client-api", git = "https://github.com/paritytech/substrate", branch = "master" }
 parking_lot = "0.10.0"
