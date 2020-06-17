@@ -9,8 +9,8 @@ runtime = { package = "iroha-runtime", path = ".." }
 parachain = { git = "https://github.com/paritytech/polkadot", package = "polkadot-parachain", tag = "v0.8.8" }
 collator = { git = "https://github.com/paritytech/polkadot", package = "polkadot-collator", tag = "v0.8.8" }
 primitives = { git = "https://github.com/paritytech/polkadot", package = "polkadot-primitives", tag = "v0.8.8" }
-sp-core = { git = "https://github.com/paritytech/substrate", branch = "master" }
-client-api = { package = "sc-client-api", git = "https://github.com/paritytech/substrate", branch = "master" }
+sp-core = { git = "https://github.com/iceseer/substrate", branch = "master" }
+client-api = { package = "sc-client-api", git = "https://github.com/iceseer/substrate", branch = "master" }
 parking_lot = "0.10.0"
 codec = { package = "parity-scale-codec", version = "1.2.0" }
 futures = "0.3.4"
