@@ -7,7 +7,7 @@ edition = "2018"
 build = "build.rs"
 
 [dependencies]
-parachain = { git = "https://github.com/paritytech/polkadot", package = "polkadot-parachain", tag = "v0.8.8", default-features = false, features = [ "wasm-api" ] }
+parachain = { git = "https://github.com/iceseer/polkadot", package = "polkadot-parachain", tag = "v0.8.8-1", default-features = false, features = [ "wasm-api" ] }
 codec = { package = "parity-scale-codec", version = "1.3.0", default-features = false, features = ["derive"] }
 tiny-keccak = "1.5.0"
 dlmalloc = { version = "0.1.3", features = [ "global" ] }

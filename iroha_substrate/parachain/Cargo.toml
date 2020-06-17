@@ -9,7 +9,7 @@ edition = "2018"
 tiny-keccak = "1.5.0"
 codec = { package = "parity-scale-codec", version = "1.1.0", default-features = false, features = ["derive"] }
 
-parachain = { git = "https://github.com/paritytech/polkadot", package = "polkadot-parachain", tag = "v0.8.8" }
+parachain = { git = "https://github.com/iceseer/polkadot", package = "polkadot-parachain", tag = "v0.8.8-1" }
 runtime = { package = "iroha-runtime", path = "runtime" }
 
 [features]
