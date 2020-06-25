@@ -20,7 +20,7 @@ maintenance = { status = "actively-developed" }
 iroha = { version = "=0.1.0", path = "../iroha" }
 iroha_network = { version = "=0.1.0", path = "../iroha_network" }
 iroha_derive = { version = "=0.1.0", path = "../iroha_macro/iroha_derive" }
-ursa = "0.3.2"
+ursa = { git="https://github.com/hyperledger/ursa.git", branch="master" }
 
 [dev-dependencies]
 async-std = { version = "1.5", features = ["attributes"] }
