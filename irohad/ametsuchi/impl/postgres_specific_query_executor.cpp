@@ -482,6 +482,7 @@ namespace iroha {
                : ""),
           (first_hash ? R"(JOIN base_row ON my_txs.row >= base_row.row)" : ""));
 
+      log_->info("QUERY: {}", query.data());
       return executeQuery<QueryTuple, PermissionTuple>(
           applier(query),
           query_hash,
