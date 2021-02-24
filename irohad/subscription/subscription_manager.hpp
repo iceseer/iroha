@@ -114,6 +114,19 @@ namespace iroha::subscription {
       engine->notifyDelayed(timeout, key, args...);
     }
 
+    void printTopology() {
+      std::stringstream ss;
+      {
+        std::lock_guard lock(engines_cs_);
+        for (auto &engine : engines_) {
+          ss << "ENGINE_ID: " << engine.first << ", ";
+          auto printer = std::reinterpret_pointer_cast<Printer>(engine.second);
+          printer->printTopology(ss);
+        }
+      }
+      std::cout << ss.str();
+    }
+
     DispatcherPtr dispatcher() const {
       return dispatcher_;
     }

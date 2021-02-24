@@ -41,6 +41,8 @@ namespace iroha::subscription {
     virtual void on_notify(SubscriptionSetId set_id,
                            const EventType &key,
                            Arguments &&... args) = 0;
+
+    virtual void print(std::stringstream &) = 0;
   };
 
 }  // namespace iroha::subscription

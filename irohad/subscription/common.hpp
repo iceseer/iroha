@@ -9,6 +9,8 @@
 #include <chrono>
 #include <mutex>
 #include <shared_mutex>
+#include <sstream>
+#include <iostream>
 
 #if __clang__
 namespace std {

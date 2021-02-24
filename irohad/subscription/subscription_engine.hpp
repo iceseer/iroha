@@ -20,6 +20,9 @@ namespace iroha::subscription {
   struct IDisposable {
     virtual void dispose() = 0;
   };
+  struct Printer {
+    virtual void printTopology(std::stringstream &ss) = 0;
+  };
 
   /**
    * @tparam EventKey - the type of a specific event from event set (e. g. a key
@@ -31,6 +34,7 @@ namespace iroha::subscription {
   template <typename EventKey, typename Dispatcher, typename Receiver>
   class SubscriptionEngine final
       : public IDisposable,
+      : public Printer,
         public std::enable_shared_from_this<
             SubscriptionEngine<EventKey, Dispatcher, Receiver>>,
         utils::NoMove,
@@ -60,6 +64,25 @@ namespace iroha::subscription {
 
     void dispose() override {
       dispatcher_.reset();
+    }
+    void printTopology(std::stringstream &ss) override {
+      ss << "ENGINE: " << __PRETTY_FUNCTION__ << std::endl;
+      {
+        std::shared_lock lock(subscribers_map_cs_);
+        for (auto &it : subscribers_map_) {
+          auto &subscribers_context = it.second;
+          ss << "|--- EVENT_KEY: " << it.first << std::endl;
+          std::lock_guard l(subscribers_context.subscribers_list_cs);
+          for (auto &sub : subscribers_context.subscribers_list) {
+            if (auto ptr = std::get<2>(sub).lock()) {
+              ss << "|------ TID: " << std::get<0>(sub)
+                 << ", SET_ID:" << std::get<1>(sub) << ", NAME: ";
+              ptr->print(ss);
+              ss << std::endl;
+            }
+          }
+        }
+      }
     }
 
    private:

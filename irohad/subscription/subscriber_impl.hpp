@@ -152,6 +152,10 @@ namespace iroha::subscription {
       subscriptions_sets_.clear();
     }
 
+    void print(std::stringstream &ss) override {
+      ss << __PRETTY_FUNCTION__ ;
+    }
+
     void on_notify(SubscriptionSetId set_id,
                    const typename Parent::EventType &key,
                    Arguments &&... args) override {
