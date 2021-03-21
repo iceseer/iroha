@@ -89,11 +89,21 @@ namespace iroha {
                                  [](const auto &p) { return p->address(); }),
                        ", "));
 
+        std::vector<std::vector<VoteMessage>> states;
         std::unique_lock<std::mutex> lock(mutex_);
         cluster_order_ = order;
         alternative_order_ = std::move(alternative_order);
         round_ = hash.vote_round;
+        auto it = future_states_.lower_bound(round_);
+        if (it->first == round_) {
+          states = std::move(it->second);
+          ++it;
+        }
+        future_states_.erase(future_states_.begin(), it);
         lock.unlock();
+        for (auto &state : states) {
+          onState(std::move(state));
+        }
         auto vote = crypto_->getVote(hash);
         // TODO 10.06.2018 andrei: IR-1407 move YAC propagation strategy to a
         // separate entity
@@ -134,6 +144,15 @@ namespace iroha {
 
       void Yac::onState(std::vector<VoteMessage> state) {
         std::unique_lock<std::mutex> guard(mutex_);
+        auto &proposal_round = getRound(state);
+
+        if (proposal_round.block_round > round_.block_round) {
+          log_->info("Store state from future for {}", proposal_round);
+          future_states_[proposal_round].push_back(state);
+          if (state.size() == 1) {
+            return;
+          }
+        }
 
         removeUnknownPeersVotes(state, getCurrentOrder());
         if (state.empty()) {
@@ -142,9 +161,9 @@ namespace iroha {
         }
 
         if (crypto_->verify(state)) {
-          auto &proposal_round = getRound(state);
-
-          if (proposal_round.block_round > round_.block_round) {
+          // several known peers, commit or reject possible
+          if (proposal_round.block_round > round_.block_round and
+              state.size() > 1) {
             guard.unlock();
             log_->info("Pass state from future for {} to pipeline",
                        proposal_round);

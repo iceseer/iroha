@@ -9,6 +9,7 @@
 #include "consensus/yac/transport/yac_network_interface.hpp"  // for YacNetworkNotifications
 #include "consensus/yac/yac_gate.hpp"                         // for HashGate
 
+#include <map>
 #include <memory>
 #include <mutex>
 
@@ -130,6 +131,7 @@ namespace iroha {
 
         std::shared_ptr<BaseSubscriber<utils::ReadWriteObject<Round>, Round>>
             apply_state_subscription_;
+        std::map<Round, std::vector<std::vector<VoteMessage>>> future_states_;
       };
     }  // namespace yac
   }    // namespace consensus
