@@ -71,14 +71,22 @@ OnDemandOrderingGate::OnDemandOrderingGate(
                 ordering_service_->onCollaborationOutcome(event.next_round);
 
                 this->sendCachedTransactions();
-                auto proposal = this->processProposalRequest(network_client_->onRequestProposal(event.next_round));
-                // vote for the object received from the network
-                getSubscription()->notify(
-                    EventTypes::kOnProposal,
-                    network::OrderingEvent{std::move(proposal),
-                                           event.next_round,
-                                           std::move(event.ledger_state)});
-              })) {}
+                network_client_->onRequestProposal(event.next_round);
+              })), new_proposal_subscription_(
+        SubscriberCreator<
+            bool,
+            boost::optional<std::shared_ptr<const ProposalType>>,
+            RoundSwitch>::template create<EventTypes::kOnNewProposal,
+            SubscriptionEngineHandlers::kYac>(
+            [this](auto &, auto new_proposal, auto event) {
+              auto proposal = this->processProposalRequest(new_proposal);
+              // vote for the object received from the network
+              getSubscription()->notify(
+                  EventTypes::kOnProposal,
+                  network::OrderingEvent{std::move(proposal),
+                                         event.next_round,
+                                         std::move(event.ledger_state)});
+            })) {}
 
 OnDemandOrderingGate::~OnDemandOrderingGate() {
   stop();

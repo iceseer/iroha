@@ -11,6 +11,7 @@
 #include "interfaces/iroha_internal/transaction_batch.hpp"
 #include "logger/logger.hpp"
 #include "network/impl/client_factory.hpp"
+#include "main/subscription.hpp"
 
 using namespace iroha;
 using namespace iroha::ordering;
@@ -51,32 +52,44 @@ void OnDemandOsClientGrpc::onBatches(CollectionType batches) {
 
 boost::optional<std::shared_ptr<const OdOsNotification::ProposalType>>
 OnDemandOsClientGrpc::onRequestProposal(consensus::Round round) {
-  grpc::ClientContext context;
-  context.set_deadline(time_provider_() + proposal_request_timeout_);
-  proto::ProposalRequest request;
-  request.mutable_round()->set_block_round(round.block_round);
-  request.mutable_round()->set_reject_round(round.reject_round);
-  proto::ProposalResponse response;
-  auto status = stub_->RequestProposal(&context, request, &response);
-  if (not status.ok()) {
-    log_->warn("RPC failed: {}", status.error_message());
-    return boost::none;
-  }
-  if (not response.has_proposal()) {
-    return boost::none;
-  }
-  return proposal_factory_->build(response.proposal())
-      .match(
-          [&](auto &&v) {
-            return boost::make_optional(
-                std::shared_ptr<const OdOsNotification::ProposalType>(
-                    std::move(v).value));
-          },
-          [this](const auto &error) {
-            log_->info("{}", error.error.error);  // error
-            return boost::optional<
-                std::shared_ptr<const OdOsNotification::ProposalType>>();
-          });
+  async_call_->Call(
+      [&](auto *context, auto *cq) {
+        context->set_deadline(time_provider_() + proposal_request_timeout_);
+        proto::ProposalRequest request;
+        request.mutable_round()->set_block_round(round.block_round);
+        request.mutable_round()->set_reject_round(round.reject_round);
+        return stub_->AsyncRequestProposal(context, request, cq);
+      },
+      std::function<void(grpc::Status &, proto::ProposalResponse &)>(
+          [&](auto &status, proto::ProposalResponse &response) {
+            if (not status.ok()) {
+              // RPC failed
+              log_->warn("Network error: {}", status.error_message());
+              return;
+            }
+            if (not response.has_proposal()) {
+              getSubscription()->notify(
+                  EventTypes::kOnNewProposal,
+                  boost::optional<
+                      std::shared_ptr<const OdOsNotification::ProposalType>>{});
+              return;
+            }
+            proposal_factory_->build(response.proposal())
+                .match(
+                    [](auto &&v) {
+                      getSubscription()->notify(
+                          EventTypes::kOnNewProposal,
+                          boost::make_optional(
+                              std::shared_ptr<
+                                  OdOsNotification::ProposalType const>(
+                                  std::move(v).value)));
+                    },
+                    [&](auto &&error) {
+                      log_->warn("Response error: {}",
+                                 std::move(error).error.error);
+                    });
+          }));
+  return boost::none;
 }
 
 OnDemandOsClientGrpcFactory::OnDemandOsClientGrpcFactory(
