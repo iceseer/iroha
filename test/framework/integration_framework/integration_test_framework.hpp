@@ -75,7 +75,6 @@ namespace iroha {
     class MstTransportGrpc;
     class OrderingServiceTransport;
     class ServerRunner;
-    template <typename Response>
     class AsyncGrpcClient;
     struct OrderingEvent;
   }  // namespace network
@@ -480,7 +479,7 @@ namespace integration_framework {
     std::string getAddress() const;
 
    protected:
-    using AsyncCall = iroha::network::AsyncGrpcClient<google::protobuf::Empty>;
+    using AsyncCall = iroha::network::AsyncGrpcClient;
 
     /**
      * A wrapper over a queue that provides thread safety and blocking pop
