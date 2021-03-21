@@ -224,7 +224,7 @@ void OnDemandOrderingInit::processBlock(
 }
 
 auto OnDemandOrderingInit::createConnectionManager(
-    std::shared_ptr<iroha::network::AsyncGrpcClient<google::protobuf::Empty>>
+    std::shared_ptr<iroha::network::AsyncGrpcClient>
         async_call,
     std::shared_ptr<TransportFactoryType> proposal_transport_factory,
     std::chrono::milliseconds delay,
