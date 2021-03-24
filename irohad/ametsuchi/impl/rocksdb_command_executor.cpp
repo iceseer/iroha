@@ -44,6 +44,123 @@ using shared_model::interface::permissions::Role;
 using shared_model::interface::GrantablePermissionSet;
 using shared_model::interface::RolePermissionSet;
 
+/*
+ *
+    - class AddAssetQuantity;
+    - class AddPeer;
+    class AddSignatory;
+    - class AppendRole;
+    class CompareAndSetAccountDetail;
+    class CallEngine;
+    - class CreateAccount;
+    - class CreateAsset;
+    - class CreateDomain;
+    - class CreateRole;
+    - class DetachRole;
+    - class GrantPermission;
+    class PermissionToString;
+    - class RemovePeer;
+    class RemoveSignatory;
+    - class RevokePermission;
+    - class SetAccountDetail;
+    - class SetQuorum;
+    - class SubtractAssetQuantity;
+    - class TransferAsset;
+    - class SetSettingValue;
+ * */
+
+/**
+ * RocksDB data structure.
+ *
+ * |ROOT|-+-|STORE|-+-<height_1, value:block>
+ *        |         +-<height_2, value:block>
+ *        |         +-<height_3, value:block>
+ *        |
+ *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-<peer_1, value:id_address_etc>
+ *                |           |         +-<peer_2, value:id_address_etc>
+ *                |           |
+ *                |           +-|STORE|-+-<store height>
+ *                |                     +-<top block hash>
+ *                |
+ *                +-|SETTINGS|-+-<key_1, value_1>
+ *                |            +-<key_2, value_2>
+ *                |            +-<key_3, value_3>
+ *                |
+ *                +-|ROLES|-+-<role_1, value:permissions bitfield>
+ *                |         +-<role_2, value:permissions bitfield>
+ *                |         +-<role_3, value:permissions bitfield>
+ *                |
+ *                +-|TRANSACTIONS|-+-|ACCOUNTS|-+-<account_1>-+-|POSITION|-+-<height_index, value:tx_hash_1>
+ *                |                |            |             |            +-<height_index, value:tx_hash_2>
+ *                |                |            |             |            +-<height_index, value:tx_hash_3>
+ *                |                |            |             |
+ *                |                |            |             +-|TIMESTAMP|-+-<ts_1, value:tx_hash_1>
+ *                |                |            |                           +-<ts_2, value:tx_hash_2>
+ *                |                |            |                           +-<ts_3, value:tx_hash_3>
+ *                |                |            |
+ *                |                |            +-<account_2>-+-|POSITION|-+-<height_index, value:tx_hash_4>
+ *                |                |                          |            +-<height_index, value:tx_hash_5>
+ *                |                |                          |            +-<height_index, value:tx_hash_6>
+ *                |                |                          |
+ *                |                |                          +-|TIMESTAMP|-+-<ts_1, value:tx_hash_4>
+ *                |                |                                        +-<ts_2, value:tx_hash_5>
+ *                |                |                                        +-<ts_3, value:tx_hash_6>
+ *                |                |
+ *                |                +-|STATUSES|-+-<tx_hash_1, value:status_height_index>
+ *                |                             +-<tx_hash_2, value:status_height_index>
+ *                |
+ *                +-|DOMAIN|-+-<domain_1>-+-|ASSETS|-+-<asset_1, value:domain_precision>
+ *                           |            |          +-<asset_2, value:domain_precision>
+ *                           |            |
+ *                           |            +-|ACCOUNTS|-<NAME>-+-|ASSETS|-+-<asset_1>-<value:quantity>
+ *                           |                                |          +-<asset_2>-<value:quantity>
+ *                           |                                |
+ *                           |                                +-|DETAILS|-+-<quorum>
+ *                           |                                |           +-<account details>
+ *                           |                                |
+ *                           |                                +-|ROLES|-+-<role_1>
+ *                           |                                |         +-<role_2>
+ *                           |                                |
+ *                           |                                +-|GRANTABLE_PER|
+ *                           |
+ *                           +-<domain_2>
+ *
+ *
+ * ######################################
+ * ############# LEGEND MAP #############
+ * ######################################
+ *
+ * ######################################
+ * ###   Directory   ##   Mnemonics   ###
+ * ######################################
+ * ### DELIMITER     ##       /       ###
+ * ### ROOT          ##    <empty>    ###
+ * ### STORE         ##       s       ###
+ * ### WSV           ##       w       ###
+ * ### NETWORK       ##       n       ###
+ * ### SETTINGS      ##       i       ###
+ * ### ASSETS        ##       x       ###
+ * ### ROLES         ##       r       ###
+ * ### TRANSACTIONS  ##       t       ###
+ * ### ACCOUNTS      ##       a       ###
+ * ### PEERS         ##       p       ###
+ * ### STATUSES      ##       u       ###
+ * ### DETAILS       ##       d       ###
+ * ### GRANTABLE_PER ##       g       ###
+ * ### POSITION      ##       P       ###
+ * ### TIMESTAMP     ##       T       ###
+ * ### DOMAIN        ##       D       ###
+ * ######################################
+ *
+ *
+ * ######################################
+ * ############# EXAMPLE ################
+ * ######################################
+ *
+ * GetAccountTransactions(ACCOUNT, TS) -> KEY: wta/ACCOUNT/T/TS/
+ * GetAccountAssets(DOMAIN,ACCOUNT)    -> KEY: wD/DOMAIN/a/ACCOUNT/x
+ */
+
 #define IROHA_ERROR_IF_CONDITION(condition, code, command_name, error_extra)   \
   if (condition) {                                                             \
     return expected::makeError(CommandError{command_name, code, error_extra}); \
