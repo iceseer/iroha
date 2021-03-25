@@ -44,31 +44,6 @@ using shared_model::interface::permissions::Role;
 using shared_model::interface::GrantablePermissionSet;
 using shared_model::interface::RolePermissionSet;
 
-/*
- *
-    - class AddAssetQuantity;
-    - class AddPeer;
-    class AddSignatory;
-    - class AppendRole;
-    class CompareAndSetAccountDetail;
-    class CallEngine;
-    - class CreateAccount;
-    - class CreateAsset;
-    - class CreateDomain;
-    - class CreateRole;
-    - class DetachRole;
-    - class GrantPermission;
-    class PermissionToString;
-    - class RemovePeer;
-    class RemoveSignatory;
-    - class RevokePermission;
-    - class SetAccountDetail;
-    - class SetQuorum;
-    - class SubtractAssetQuantity;
-    - class TransferAsset;
-    - class SetSettingValue;
- * */
-
 /**
  * RocksDB data structure.
  *
@@ -76,8 +51,8 @@ using shared_model::interface::RolePermissionSet;
  *        |         +-<height_2, value:block>
  *        |         +-<height_3, value:block>
  *        |
- *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-<peer_1, value:id_address_etc>
- *                |           |         +-<peer_2, value:id_address_etc>
+ *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-<peer_1_pubkey, value:address>
+ *                |           |         +-<peer_2_pubkey, value:address>
  *                |           |
  *                |           +-|STORE|-+-<store height>
  *                |                     +-<top block hash>
@@ -109,56 +84,27 @@ using shared_model::interface::RolePermissionSet;
  *                |                +-|STATUSES|-+-<tx_hash_1, value:status_height_index>
  *                |                             +-<tx_hash_2, value:status_height_index>
  *                |
- *                +-|DOMAIN|-+-<domain_1>-+-|ASSETS|-+-<asset_1, value:domain_precision>
- *                           |            |          +-<asset_2, value:domain_precision>
+ *                +-|DOMAIN|-+-|DOMAIN_1|-+-|ASSETS|-+-<asset_1, value:precision>
+ *                           |            |          +-<asset_2, value:precision>
  *                           |            |
- *                           |            +-|ACCOUNTS|-<NAME>-+-|ASSETS|-+-<asset_1>-<value:quantity>
- *                           |                                |          +-<asset_2>-<value:quantity>
- *                           |                                |
- *                           |                                +-|DETAILS|-+-<quorum>
- *                           |                                |           +-<account details>
- *                           |                                |
- *                           |                                +-|ROLES|-+-<role_1>
- *                           |                                |         +-<role_2>
- *                           |                                |
- *                           |                                +-|GRANTABLE_PER|
+ *                           |            +-|ACCOUNTS|-|NAME_1|-+-|ASSETS|-+-<asset_1, value:quantity>
+ *                           |                                  |          +-<asset_2, value:quantity>
+ *                           |                                  |
+ *                           |                                  +-|OPTIONS|-+-<quorum>
+ *                           |                                  |           +-<asset_size>
+ *                           |                                  |
+ *                           |                                  +-|DETAILS|-+-<domain>-<account>-<key>
+ *                           |                                  |
+ *                           |                                  +-|ROLES|-+-<role_1, value:flag>
+ *                           |                                  |         +-<role_2, value:flag>
+ *                           |                                  |
+ *                           |                                  +-|GRANTABLE_PER|-+-<domain_account_1, value:permissions>
+ *                           |                                  |                 +-<domain_account_2, value:permissions>
+ *                           |                                  |
+ *                           |                                  +-|SIGNATORIES|-+-<signatory_1>
+ *                           |                                                  +-<signatory_2>
  *                           |
- *                           +-<domain_2>
- *
- *
- * ######################################
- * ############# LEGEND MAP #############
- * ######################################
- *
- * ######################################
- * ###   Directory   ##   Mnemonics   ###
- * ######################################
- * ### DELIMITER     ##       /       ###
- * ### ROOT          ##    <empty>    ###
- * ### STORE         ##       s       ###
- * ### WSV           ##       w       ###
- * ### NETWORK       ##       n       ###
- * ### SETTINGS      ##       i       ###
- * ### ASSETS        ##       x       ###
- * ### ROLES         ##       r       ###
- * ### TRANSACTIONS  ##       t       ###
- * ### ACCOUNTS      ##       a       ###
- * ### PEERS         ##       p       ###
- * ### STATUSES      ##       u       ###
- * ### DETAILS       ##       d       ###
- * ### GRANTABLE_PER ##       g       ###
- * ### POSITION      ##       P       ###
- * ### TIMESTAMP     ##       T       ###
- * ### DOMAIN        ##       D       ###
- * ######################################
- *
- *
- * ######################################
- * ############# EXAMPLE ################
- * ######################################
- *
- * GetAccountTransactions(ACCOUNT, TS) -> KEY: wta/ACCOUNT/T/TS/
- * GetAccountAssets(DOMAIN,ACCOUNT)    -> KEY: wD/DOMAIN/a/ACCOUNT/x
+ *                           +-|DOMAIN_2|
  */
 
 #define IROHA_ERROR_IF_CONDITION(condition, code, command_name, error_extra)   \
@@ -267,6 +213,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::RolePermissionSet const &creator_permissions) {
   RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
   rocksdb::Status status;
+  //TODO(iceseer): fix the case there will be no delimiter
   auto creator_names = splitId(creator_account_id);
   auto &creator_account_name = creator_names.at(0);
   auto &creator_domain_id = creator_names.at(1);
