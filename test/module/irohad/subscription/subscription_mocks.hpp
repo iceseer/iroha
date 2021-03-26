@@ -31,6 +31,7 @@ namespace iroha::subscription {
 
     MOCK_METHOD3_T(on_notify,
                    void(SubscriptionSetId, const EventKey &, Argument &&));
+    MOCK_METHOD1(print, void (std::stringstream &));
   };
 
   class MockDispatcher {

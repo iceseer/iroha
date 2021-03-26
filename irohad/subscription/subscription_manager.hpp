@@ -120,7 +120,7 @@ namespace iroha::subscription {
         std::lock_guard lock(engines_cs_);
         for (auto &engine : engines_) {
           ss << "ENGINE_ID: " << engine.first << ", ";
-          auto printer = std::reinterpret_pointer_cast<Printer>(engine.second);
+          auto printer = std::reinterpret_pointer_cast<IDisposable>(engine.second);
           printer->printTopology(ss);
         }
       }
