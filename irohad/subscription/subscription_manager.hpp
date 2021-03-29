@@ -9,12 +9,17 @@
 #include <memory>
 #include <shared_mutex>
 #include <unordered_map>
+#include <execinfo.h>
 
 #include "common/compile-time_murmur2.hpp"
 #include "subscription/common.hpp"
 #include "subscription/dispatcher.hpp"
 #include "subscription/subscriber.hpp"
 #include "subscription/subscription_engine.hpp"
+
+#ifndef NDEBUG
+# define SUBSCRIPTION_PRINT_TOPOLOGY
+#endif//DEBUG
 
 namespace iroha::subscription {
 
@@ -42,6 +47,45 @@ namespace iroha::subscription {
     std::shared_mutex engines_cs_;
     EnginesList engines_;
     std::atomic_flag disposed_;
+
+#ifdef SUBSCRIPTION_PRINT_TOPOLOGY
+    using NotifierAddresses = std::unordered_map<uintptr_t, std::string>;
+    using DestinationKeys = std::unordered_map<size_t, NotifierAddresses>;
+    using DestinationEngines = std::unordered_map<EngineHash, DestinationKeys>;
+
+    utils::ReadWriteObject<DestinationEngines> notifiers_;
+
+    template <typename EventKey>
+    void storeNotifier (EngineHash eh, EventKey key) {
+      static constexpr size_t kCount = 7ul;
+      static constexpr size_t kOffset = 1ul;
+
+      void *array[kCount];
+
+      uintptr_t address_hash = 0ul;
+      int const size = backtrace(array, kCount);
+      for (int i = kOffset; i < size; ++i)
+        address_hash ^= uintptr_t(array[i]);
+
+      notifiers_.exclusiveAccess([&](auto &notifiers){
+        auto &keys = notifiers[eh];
+        auto &addresses = keys[key];
+        if (addresses.find(address_hash) != addresses.end())
+          return;
+
+        std::string result;
+        char **strings = backtrace_symbols(array, size);
+        if (strings != NULL)
+          for (int i = kOffset; i < size; i++) {
+            result += strings[i];
+            result += '\n';
+          }
+        free(strings);
+        addresses[address_hash] = std::move(result);
+      });
+    }
+
+#endif//SUBSCRIPTION_PRINT_TOPOLOGY
 
    private:
     template <typename... Args>
@@ -102,6 +146,10 @@ namespace iroha::subscription {
                              Dispatcher,
                              Subscriber<EventKey, Dispatcher, Args...>>;
       constexpr auto engineId = getSubscriptionType<Args...>();
+#ifdef SUBSCRIPTION_PRINT_TOPOLOGY
+      storeNotifier(engineId, key);
+#endif//SUBSCRIPTION_PRINT_TOPOLOGY
+
       std::shared_ptr<EngineType> engine;
       {
         std::shared_lock lock(engines_cs_);
@@ -120,10 +168,26 @@ namespace iroha::subscription {
         std::lock_guard lock(engines_cs_);
         for (auto &engine : engines_) {
           ss << "ENGINE_ID: " << engine.first << ", ";
-          auto printer = std::reinterpret_pointer_cast<IDisposable>(engine.second);
+          auto printer =
+              std::reinterpret_pointer_cast<IDisposable>(engine.second);
           printer->printTopology(ss);
         }
       }
+
+#ifdef SUBSCRIPTION_PRINT_TOPOLOGY
+      ss<< std::endl << "[NOTIFIERS]" << std::endl;
+      notifiers_.sharedAccess([&](auto const &notifiers) {
+        for (auto const &it : notifiers) {
+          ss << "ENGINE_ID: " << it.first << std::endl;
+          for (auto const &yt : it.second) {
+            ss << "EVENT KEY: " << yt.first << std::endl;
+            for (auto const &zt : yt.second)
+              ss << zt.second << std::endl << std::endl;
+          }
+        }
+      });
+#endif  // SUBSCRIPTION_PRINT_TOPOLOGY
+
       std::cout << ss.str();
     }
 

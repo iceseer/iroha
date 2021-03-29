@@ -27,6 +27,8 @@ SET(CMAKE_CXX_OUTPUT_EXTENSION_REPLACE 1)
 SET(CMAKE_INSTALL_RPATH "../lib")
 SET(CMAKE_EXPORT_COMPILE_COMMANDS ON)  ## use for code static analyze and vscode cpp plugin
 
+set(CMAKE_EXE_LINKER_FLAGS_DEBUG    "${CMAKE_EXE_LINKER_FLAGS_DEBUG} -rdynamic")
+
 if(CMAKE_BUILD_TYPE MATCHES "Release")
   include(CheckIPOSupported)
   check_ipo_supported(RESULT lto_supported OUTPUT error)
