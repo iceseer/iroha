@@ -188,6 +188,22 @@ CommandResult RocksDbCommandExecutor::execute(
           auto &domain_id = names.at(1);
 
           // get account permissions
+          common.enumerate(
+              [](std::unique_ptr<rocksdb::Iterator> const &it,
+                 size_t const prefix_size) {
+                if (!it->status().ok())
+                  return false;
+                auto const key = it->key().ToStringView();
+
+                auto const role =
+                    key.substr(prefix_size + fmtstrings::kDelimiterSize,
+                               key.size() - prefix_size
+                                   - 2ul * fmtstrings::kDelimiterSize);
+              },
+              fmtstrings::kPathAccountRoles,
+              domain_id,
+              account_name);
+
           auto status =
               common.get(fmtstrings::kPermissions, domain_id, account_name);
           IROHA_ERROR_IF_NOT_OK()

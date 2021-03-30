@@ -9,10 +9,12 @@
 #include <charconv>
 #include <string>
 #include <string_view>
+#include <mutex>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <rocksdb/utilities/transaction.h>
+#include <rocksdb/utilities/optimistic_transaction_db.h>
 #include "interfaces/common_objects/types.hpp"
 
 /**
@@ -88,6 +90,13 @@
 #define RDB_PATH_ACCOUNT RDB_PATH_DOMAIN /**/ RDB_ACCOUNTS /**/ RDB_XXX
 
 namespace iroha::ametsuchi::fmtstrings {
+  static constexpr size_t kDelimiterSize = sizeof(RDB_DELIMITER)/sizeof(RDB_DELIMITER[0]) - 1ul;
+
+  /**
+   * Paths
+   */
+  static auto constexpr kPathAccountRoles{
+      FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_ROLES)};
 
   // domain_id/account_name
   static auto constexpr kQuorum{
@@ -176,91 +185,129 @@ namespace {
 
 namespace iroha::ametsuchi {
 
+  struct RocksDBContext {
+    std::unique_ptr<rocksdb::Transaction> transaction;
+    fmt::memory_buffer key_buffer;
+    std::string value_buffer;
+  };
+
+  struct RocksDBPort : std::enable_shared_from_this<RocksDBPort> {
+    RocksDBPort(RocksDBPort const&) = delete;
+    RocksDBPort& operator=(RocksDBPort const&) = delete;
+
+    void initialize(std::string const &db_name) {
+      rocksdb::Options options;
+      options.create_if_missing = true;
+      options.error_if_exists = true;
+
+      rocksdb::OptimisticTransactionDB *transaction_db;
+      auto status = rocksdb::OptimisticTransactionDB::Open(
+          options, db_name, &transaction_db);
+      transaction_db_.reset(transaction_db);
+
+      if (!status.ok())
+        throw std::runtime_error(status.ToString());
+    }
+
+    void prepareTransaction(RocksDBContext &tx_context) {
+      assert(transaction_db_);
+      tx_context.transaction.reset(
+          transaction_db_->BeginTransaction(rocksdb::WriteOptions()));
+      tx_context.key_buffer.clear();
+      tx_context.value_buffer.clear();
+    }
+
+   private:
+    std::unique_ptr<rocksdb::OptimisticTransactionDB> transaction_db_;
+  };
+
+  template<typename Tx>
   class RocksDbCommon {
+    inline auto &valueBuffer() {
+      return tx_context_->value_buffer;
+    }
+    inline auto &keyBuffer() {
+      return tx_context_->key_buffer;
+    }
+    inline auto &transaction() {
+      return tx_context_->transaction;
+    }
+
    public:
-    RocksDbCommon(rocksdb::Transaction &db_transaction,
-                  fmt::memory_buffer &key_buffer,
-                  std::string &value_buffer)
-        : db_transaction_(db_transaction),
-          key_buffer_(key_buffer),
-          value_buffer_(value_buffer) {
-      key_buffer_.clear();
-      value_buffer_.clear();
+    RocksDbCommon(Tx tx_context) : tx_context_(std::move(tx_context)) {
+      assert(tx_context_);
     }
 
     auto encode(uint64_t number) {
-      value_buffer_.clear();
-      fmt::format_to(std::back_inserter(value_buffer_), kValue, number);
+      valueBuffer().clear();
+      fmt::format_to(std::back_inserter(valueBuffer()), kValue, number);
     }
 
     auto decode(uint64_t &number) {
-      return std::from_chars(value_buffer_.data(),
-                             value_buffer_.data() + value_buffer_.size(),
+      return std::from_chars(valueBuffer().data(),
+                             valueBuffer().data() + valueBuffer().size(),
                              number);
     }
 
     template <typename S, typename... Args>
     auto get(S &fmtstring, Args &&... args) {
-      key_buffer_.clear();
-      fmt::format_to(key_buffer_, fmtstring, args...);
+      keyBuffer().clear();
+      fmt::format_to(keyBuffer(), fmtstring, args...);
 
-      value_buffer_.clear();
-      return db_transaction_.Get(
+      valueBuffer().clear();
+      return transaction().Get(
           rocksdb::ReadOptions(),
-          std::string_view(key_buffer_.data(), key_buffer_.size()),
-          &value_buffer_);
+          std::string_view(keyBuffer().data(), keyBuffer().size()),
+          &valueBuffer());
     }
 
     template <typename S, typename... Args>
     auto put(S &fmtstring, Args &&... args) {
-      key_buffer_.clear();
-      fmt::format_to(key_buffer_, fmtstring, args...);
+      keyBuffer().clear();
+      fmt::format_to(keyBuffer(), fmtstring, args...);
 
-      return db_transaction_.Put(
-          std::string_view(key_buffer_.data(), key_buffer_.size()),
-          value_buffer_);
+      return transaction().Put(
+          std::string_view(keyBuffer().data(), keyBuffer().size()),
+          valueBuffer());
     }
 
     template <typename S, typename... Args>
     auto del(S &fmtstring, Args &&... args) {
-      key_buffer_.clear();
-      fmt::format_to(key_buffer_, fmtstring, args...);
+      keyBuffer().clear();
+      fmt::format_to(keyBuffer(), fmtstring, args...);
 
-      return db_transaction_.Delete(
-          std::string_view(key_buffer_.data(), key_buffer_.size()));
+      return transaction().Delete(
+          std::string_view(keyBuffer().data(), keyBuffer().size()));
     }
 
     template <typename S, typename... Args>
     auto seek(S &fmtstring, Args &&... args) {
-      key_buffer_.clear();
-      fmt::format_to(key_buffer_, fmtstring, args...);
+      keyBuffer().clear();
+      fmt::format_to(keyBuffer(), fmtstring, args...);
 
       std::unique_ptr<rocksdb::Iterator> it;
 
-      it.reset(db_transaction_.GetIterator(rocksdb::ReadOptions()));
-
-      it->Seek(std::string_view(key_buffer_.data(), key_buffer_.size()));
+      it.reset(transaction().GetIterator(rocksdb::ReadOptions()));
+      it->Seek(std::string_view(keyBuffer().data(), keyBuffer().size()));
 
       return it;
     }
 
     template <typename F, typename S, typename... Args>
-    auto enumerate(F &&func, S &fmtstring, Args &&... args) {
-      key_buffer_.clear();
-      fmt::format_to(key_buffer_, fmtstring, args...);
+    void enumerate(F &&func, S &fmtstring, Args &&... args) {
+      keyBuffer().clear();
+      fmt::format_to(keyBuffer(), fmtstring, args...);
+      std::string_view const key(keyBuffer().data(), keyBuffer().size());
 
-      std::unique_ptr<rocksdb::Iterator> it(db_transaction_.GetIterator(rocksdb::ReadOptions()));
-
-
-      //it->Seek(std::string_view(key_buffer_.data(), key_buffer_.size()));
-
-      return it;
+      std::unique_ptr<rocksdb::Iterator> it(
+          transaction().GetIterator(rocksdb::ReadOptions()));
+      for (it->Seek(key); it->Valid() && it->key().starts_with(key); it->Next())
+        if (!std::forward<F>(func)(it, key.size()))
+          break;
     }
 
    private:
-    rocksdb::Transaction &db_transaction_;
-    fmt::memory_buffer &key_buffer_;
-    std::string &value_buffer_;
+    Tx tx_context_;
   };
 
 }  // namespace iroha::ametsuchi

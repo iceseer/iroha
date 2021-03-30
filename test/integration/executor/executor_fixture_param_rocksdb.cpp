@@ -11,6 +11,7 @@
 #include <boost/filesystem.hpp>
 
 #include "ametsuchi/burrow_storage.hpp"
+#include "ametsuchi/impl/rocksdb_common.hpp"
 #include "ametsuchi/impl/rocksdb_command_executor.hpp"
 #include "ametsuchi/impl/rocksdb_specific_query_executor.hpp"
 #include "backend/protobuf/proto_permission_to_string.hpp"
@@ -29,6 +30,8 @@ RocksDbExecutorTestParam::RocksDbExecutorTestParam()
       db_name_((boost::filesystem::temp_directory_path()
                 / boost::filesystem::unique_path())
                    .string()) {
+  auto db_port = RocksDBPort()
+
   rocksdb::OptimisticTransactionDB *transaction_db;
   rocksdb::Options options;
   options.create_if_missing = true;
