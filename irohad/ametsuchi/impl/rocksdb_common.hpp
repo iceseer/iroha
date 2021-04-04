@@ -256,7 +256,7 @@ namespace iroha::ametsuchi {
       fmt::format_to(keyBuffer(), fmtstring, args...);
 
       valueBuffer().clear();
-      return transaction().Get(
+      return transaction()->Get(
           rocksdb::ReadOptions(),
           std::string_view(keyBuffer().data(), keyBuffer().size()),
           &valueBuffer());
@@ -267,7 +267,7 @@ namespace iroha::ametsuchi {
       keyBuffer().clear();
       fmt::format_to(keyBuffer(), fmtstring, args...);
 
-      return transaction().Put(
+      return transaction()->Put(
           std::string_view(keyBuffer().data(), keyBuffer().size()),
           valueBuffer());
     }
@@ -277,7 +277,7 @@ namespace iroha::ametsuchi {
       keyBuffer().clear();
       fmt::format_to(keyBuffer(), fmtstring, args...);
 
-      return transaction().Delete(
+      return transaction()->Delete(
           std::string_view(keyBuffer().data(), keyBuffer().size()));
     }
 
@@ -288,7 +288,7 @@ namespace iroha::ametsuchi {
 
       std::unique_ptr<rocksdb::Iterator> it;
 
-      it.reset(transaction().GetIterator(rocksdb::ReadOptions()));
+      it.reset(transaction()->GetIterator(rocksdb::ReadOptions()));
       it->Seek(std::string_view(keyBuffer().data(), keyBuffer().size()));
 
       return it;
@@ -301,7 +301,7 @@ namespace iroha::ametsuchi {
       std::string_view const key(keyBuffer().data(), keyBuffer().size());
 
       std::unique_ptr<rocksdb::Iterator> it(
-          transaction().GetIterator(rocksdb::ReadOptions()));
+          transaction()->GetIterator(rocksdb::ReadOptions()));
       for (it->Seek(key); it->Valid() && it->key().starts_with(key); it->Next())
         if (!std::forward<F>(func)(it, key.size()))
           break;

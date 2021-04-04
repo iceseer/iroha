@@ -104,7 +104,7 @@ using shared_model::interface::RolePermissionSet;
  *                           |                                  +-|SIGNATORIES|-+-<signatory_1>
  *                           |                                                  +-<signatory_2>
  *                           |
- *                           +-|DOMAIN_2|
+ *                           +-<domain_1, value: default_role>
  */
 
 #define IROHA_ERROR_IF_CONDITION(condition, code, command_name, error_extra)   \
@@ -160,12 +160,12 @@ using shared_model::interface::RolePermissionSet;
                            command.toString(),                              \
                            "")
 
-#define IROHA_CHECK_ERROR(name,value) \
-  decltype(value)::ValueInnerType name; \
-            if (auto result = (value); result.which() == 1) { \
+#define IROHA_CHECK_ERROR(name,value1) \
+  decltype(value1)::ValueInnerType name; \
+            if (auto result = (value1); result.which() == 1) { \
 return expected::makeError(CommandError{ result.assumeError() }); \
 } else { \
-name = std::move(boost::get<decltype(result)::ValueInnerType>(result)); \
+name = std::move(boost::get<decltype(result)::ValueType>(result).value); \
 }
 
 
@@ -248,7 +248,8 @@ CommandResult RocksDbCommandExecutor::execute(
           auto &domain_id = names.at(1);
 
           // get account permissions
-          IROHA_CHECK_ERROR(permissions, getAccountPermissions(domain_id, account_name));
+          auto r = getAccountPermissions(domain_id, account_name);
+          IROHA_CHECK_ERROR(permissions, r);
           creator_permissions = std::move(permissions);
         }
 
@@ -374,27 +375,19 @@ CommandResult RocksDbCommandExecutor::operator()(
   }
 
   rocksdb::Status status;
-  auto status = common.get(fmtstrings::kPermissions, domain_id, account_name);
-  IROHA_ERROR_IF_NOT_FOUND(3)
-  RolePermissionSet account_permissions{value_buffer_};
-
-  status = common.get(fmtstrings::kRole, role_name);
-  IROHA_ERROR_IF_NOT_FOUND(4)
-  RolePermissionSet role_permissions{value_buffer_};
-
   if (do_validation) {
     // check if account already has role
     status = common.get(
         fmtstrings::kAccountRole, domain_id, account_name, role_name);
     IROHA_ERROR_IF_FOUND(1)
 
+    status = common.get(
+        fmtstrings::kRole, role_name);
+    IROHA_ERROR_IF_FOUND(2)
+
+    RolePermissionSet role_permissions{db_context_->value_buffer};
     IROHA_ERROR_IF_NOT_SUBSET()
   }
-
-  account_permissions |= role_permissions;
-  value_buffer_.assign(account_permissions.toBitstring());
-  status = common.put(fmtstrings::kPermissions, domain_id, account_name);
-  IROHA_ERROR_IF_NOT_OK()
 
   status =
       common.put(fmtstrings::kAccountRole, domain_id, account_name, role_name);
@@ -428,7 +421,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto &account_name = command.accountName();
   auto &domain_id = command.domainId();
@@ -443,17 +436,14 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto status = common.get(fmtstrings::kDomain, domain_id);
   IROHA_ERROR_IF_NOT_FOUND(3)
 
-  auto default_role = value_buffer_;
+  auto default_role = db_context_->value_buffer;
 
-  status = common.get(fmtstrings::kRole, value_buffer_);
+  status = common.get(fmtstrings::kRole, db_context_->value_buffer);
   IROHA_ERROR_IF_NOT_OK()
-  RolePermissionSet role_permissions{value_buffer_};
+  RolePermissionSet role_permissions{db_context_->value_buffer};
 
   status = common.put(
       fmtstrings::kAccountRole, domain_id, account_name, default_role);
-  IROHA_ERROR_IF_NOT_OK()
-
-  status = common.put(fmtstrings::kPermissions, domain_id, account_name);
   IROHA_ERROR_IF_NOT_OK()
 
   if (do_validation) {
@@ -464,7 +454,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_FOUND(4)
   }
 
-  value_buffer_.clear();
+  db_context_->value_buffer.clear();
   status = common.put(fmtstrings::kSignatory, domain_id, account_name, pubkey);
   IROHA_ERROR_IF_NOT_OK()
 
@@ -482,7 +472,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto &domain_id = command.domainId();
   auto &asset_name = command.assetName();
@@ -513,7 +503,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto &domain_id = command.domainId();
   auto &default_role = command.userDefaultRole();
@@ -531,7 +521,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_NOT_FOUND(4)
   }
 
-  value_buffer_.assign(default_role);
+  db_context_->value_buffer.assign(default_role);
   auto status = common.put(fmtstrings::kDomain, domain_id);
   IROHA_ERROR_IF_NOT_OK()
 
@@ -545,7 +535,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto &role_name = command.roleName();
   auto role_permissions = command.rolePermissions();
@@ -562,7 +552,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_FOUND(3)
   }
 
-  value_buffer_.assign(role_permissions.toBitstring());
+  db_context_->value_buffer.assign(role_permissions.toBitstring());
   auto status = common.put(fmtstrings::kRole, role_name);
   IROHA_ERROR_IF_NOT_OK()
 
@@ -576,7 +566,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto names = splitId(command.accountId());
   auto &account_name = names.at(0);
@@ -587,10 +577,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_NOT_SET(Role::kDetachRole)
   }
 
-  auto status = common.get(fmtstrings::kPermissions, domain_id, account_name);
-  IROHA_ERROR_IF_NOT_FOUND(3)
-
-  status = common.get(fmtstrings::kRole, role_name);
+  auto status = common.get(fmtstrings::kRole, role_name);
   IROHA_ERROR_IF_NOT_FOUND(5)
 
   if (do_validation) {
@@ -604,23 +591,6 @@ CommandResult RocksDbCommandExecutor::operator()(
       common.del(fmtstrings::kAccountRole, domain_id, account_name, role_name);
   IROHA_ERROR_IF_NOT_OK()
 
-  RolePermissionSet account_permissions;
-  auto it = common.seek(fmtstrings::kAccountRole, domain_id, account_name, "");
-  status = it->status();
-  IROHA_ERROR_IF_NOT_OK()
-  rocksdb::Slice key_buffer_slice(key_buffer_.data(), key_buffer_.size());
-  for (; it->Valid() and it->key().starts_with(key_buffer_slice); it->Next()) {
-    auto value = it->value();
-    account_permissions |=
-        RolePermissionSet{std::string_view{value.data(), value.size()}};
-  }
-  status = it->status();
-  IROHA_ERROR_IF_NOT_OK()
-
-  value_buffer_.assign(account_permissions.toBitstring());
-  status = common.put(fmtstrings::kPermissions, domain_id, account_name);
-  IROHA_ERROR_IF_NOT_OK()
-
   return {};
 }
 
@@ -631,7 +601,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto grantee_names = splitId(creator_account_id);
   auto &grantee_account_name = grantee_names.at(0);
@@ -661,7 +631,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                            grantee_domain_id,
                            grantee_account_name);
   if (status.ok()) {
-    granted_account_permissions = GrantablePermissionSet{value_buffer_};
+    granted_account_permissions = GrantablePermissionSet{db_context_->value_buffer};
   } else if (not status.IsNotFound()) {
     IROHA_ERROR_IF_NOT_OK()
   }
@@ -674,7 +644,7 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   granted_account_permissions.set(granted_perm);
 
-  value_buffer_.assign(granted_account_permissions.toBitstring());
+  db_context_->value_buffer.assign(granted_account_permissions.toBitstring());
   status = common.put(fmtstrings::kGranted,
                       domain_id,
                       account_name,
@@ -719,7 +689,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto creator_names = splitId(creator_account_id);
   auto &creator_account_name = creator_names.at(0);
@@ -739,7 +709,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                                domain_id,
                                account_name);
       if (status.ok()) {
-        granted_account_permissions = GrantablePermissionSet{value_buffer_};
+        granted_account_permissions = GrantablePermissionSet{db_context_->value_buffer};
       } else if (not status.IsNotFound()) {
         IROHA_ERROR_IF_NOT_OK()
       }
@@ -753,7 +723,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_NOT_FOUND(3)
   }
 
-  value_buffer_.assign(command.value());
+  db_context_->value_buffer.assign(command.value());
   auto status = common.put(fmtstrings::kAccountDetail,
                            domain_id,
                            account_name,
@@ -790,7 +760,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
   rocksdb::Status status;
   auto creator_names = splitId(creator_account_id);
   auto &creator_account_name = creator_names.at(0);
@@ -817,11 +787,8 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_NOT_FOUND(4)
 
     // get account permissions
-    auto status = common.get(fmtstrings::kPermissions,
-                             destination_domain_id,
-                             destination_account_name);
-    IROHA_ERROR_IF_NOT_OK()
-    auto destination_permissions = RolePermissionSet{value_buffer_};
+    auto r = getAccountPermissions(destination_domain_id, destination_account_name);
+    IROHA_CHECK_ERROR(destination_permissions, r);
     IROHA_ERROR_IF_CONDITION(not destination_permissions.isSet(Role::kReceive),
                              2,
                              command.toString(),
@@ -840,7 +807,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                                source_domain_id,
                                source_account_name);
       if (status.ok()) {
-        granted_account_permissions = GrantablePermissionSet{value_buffer_};
+        granted_account_permissions = GrantablePermissionSet{db_context_->value_buffer};
       } else if (not status.IsNotFound()) {
         IROHA_ERROR_IF_NOT_OK()
       }
@@ -870,7 +837,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                       source_account_name,
                       command.assetId());
   IROHA_ERROR_IF_NOT_FOUND(6)
-  shared_model::interface::Amount source_balance(value_buffer_);
+  shared_model::interface::Amount source_balance(db_context_->value_buffer);
 
   source_balance -= amount;
   IROHA_ERROR_IF_CONDITION(
@@ -893,7 +860,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                       destination_account_name,
                       command.assetId());
   if (status.ok()) {
-    destination_balance = shared_model::interface::Amount(value_buffer_);
+    destination_balance = shared_model::interface::Amount(db_context_->value_buffer);
   } else if (status.IsNotFound()) {
     ++account_asset_size;
   } else {
@@ -904,14 +871,14 @@ CommandResult RocksDbCommandExecutor::operator()(
   IROHA_ERROR_IF_CONDITION(
       destination_balance.toStringRepr()[0] == 'N', 7, command.toString(), "")
 
-  value_buffer_.assign(source_balance.toStringRepr());
+  db_context_->value_buffer.assign(source_balance.toStringRepr());
   status = common.put(fmtstrings::kAccountAsset,
                       source_domain_id,
                       source_account_name,
                       command.assetId());
   IROHA_ERROR_IF_NOT_OK()
 
-  value_buffer_.assign(destination_balance.toStringRepr());
+  db_context_->value_buffer.assign(destination_balance.toStringRepr());
   status = common.put(fmtstrings::kAccountAsset,
                       destination_domain_id,
                       destination_account_name,
@@ -934,13 +901,13 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
   rocksdb::Status status;
 
   auto &key = command.key();
   auto &value = command.value();
 
-  value_buffer_.assign(value);
+  db_context_->value_buffer.assign(value);
   status = common.put(fmtstrings::kSetting, key);
   IROHA_ERROR_IF_NOT_OK()
 
