@@ -11,6 +11,8 @@
 #include <fmt/format.h>
 #include "ametsuchi/command_executor.hpp"
 #include "interfaces/permissions.hpp"
+#include "ametsuchi/impl/rocksdb_common.hpp"
+
 
 namespace rocksdb {
   class Transaction;
@@ -47,7 +49,7 @@ namespace iroha::ametsuchi {
   class RocksDbCommandExecutor final : public CommandExecutor {
    public:
     RocksDbCommandExecutor(
-        rocksdb::Transaction &db_transaction,
+        std::shared_ptr<RocksDBPort> db_port,
         std::shared_ptr<shared_model::interface::PermissionToString>
             perm_converter,
         std::optional<std::reference_wrapper<const VmCaller>> vm_caller);
@@ -222,9 +224,12 @@ namespace iroha::ametsuchi {
         shared_model::interface::RolePermissionSet const &creator_permissions);
 
    private:
-    fmt::memory_buffer key_buffer_;
-    std::string value_buffer_;
-    rocksdb::Transaction &db_transaction_;
+    inline expected::Result<shared_model::interface::RolePermissionSet, CommandError>
+        getAccountPermissions(std::string_view domain, std::string_view account);
+
+   private:
+    std::shared_ptr<RocksDBPort> db_port_;
+    std::shared_ptr<RocksDBContext> db_context_;
     std::shared_ptr<shared_model::interface::PermissionToString>
         perm_converter_;
     std::optional<std::reference_wrapper<const VmCaller>> vm_caller_;

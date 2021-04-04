@@ -194,6 +194,7 @@ namespace iroha::ametsuchi {
   struct RocksDBPort : std::enable_shared_from_this<RocksDBPort> {
     RocksDBPort(RocksDBPort const&) = delete;
     RocksDBPort& operator=(RocksDBPort const&) = delete;
+    RocksDBPort() = default;
 
     void initialize(std::string const &db_name) {
       rocksdb::Options options;
