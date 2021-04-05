@@ -60,31 +60,19 @@ void RocksDbExecutorTestParam::clearBackendState() {
   rocksdb::Options options;
   options.create_if_missing = true;
   options.error_if_exists = true;
-  transaction_.reset();
-  transaction_db_.reset();
   rocksdb::DestroyDB(db_name_, options);
 
-  rocksdb::OptimisticTransactionDB *transaction_db;
-
-  auto status = rocksdb::OptimisticTransactionDB::Open(
-      options, db_name_, &transaction_db);
-  if (not status.ok()) {
-    throw std::runtime_error(status.ToString());
-  }
-
-  transaction_db_.reset(transaction_db);
-
-  transaction_.reset(
-      transaction_db_->BeginTransaction(rocksdb::WriteOptions()));
+  auto db_port = std::make_shared<RocksDBPort>();
+  db_port->initialize(db_name_);
 
   executor_itf_target_.command_executor =
       std::make_shared<RocksDbCommandExecutor>(
-          *transaction_,
+          db_port,
           std::make_shared<shared_model::proto::ProtoPermissionToString>(),
           *vm_caller_);
   executor_itf_target_.query_executor =
       std::make_shared<RocksDbSpecificQueryExecutor>(
-          *transaction_,
+          db_port,
           *block_storage_,
           std::make_shared<MockPendingTransactionStorage>(),
           std::make_shared<shared_model::proto::ProtoQueryResponseFactory>(),

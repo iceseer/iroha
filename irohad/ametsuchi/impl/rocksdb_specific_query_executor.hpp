@@ -11,6 +11,7 @@
 #include <fmt/format.h>
 #include "interfaces/iroha_internal/query_response_factory.hpp"
 #include "interfaces/permissions.hpp"
+#include "ametsuchi/impl/rocksdb_common.hpp"
 
 namespace rocksdb {
   class Transaction;
@@ -45,7 +46,7 @@ namespace iroha::ametsuchi {
   class RocksDbSpecificQueryExecutor : public SpecificQueryExecutor {
    public:
     RocksDbSpecificQueryExecutor(
-        rocksdb::Transaction &db_transaction,
+        std::shared_ptr<RocksDBPort> db_port,
         BlockStorage &block_store,
         std::shared_ptr<PendingTransactionStorage> pending_txs_storage,
         std::shared_ptr<shared_model::interface::QueryResponseFactory>
@@ -147,7 +148,7 @@ namespace iroha::ametsuchi {
    private:
     fmt::memory_buffer mutable key_buffer_;
     std::string mutable value_buffer_;
-    rocksdb::Transaction &db_transaction_;
+    std::shared_ptr<RocksDBPort> db_port_;
     BlockStorage &block_store_;
     std::shared_ptr<PendingTransactionStorage> pending_txs_storage_;
     std::shared_ptr<shared_model::interface::QueryResponseFactory>

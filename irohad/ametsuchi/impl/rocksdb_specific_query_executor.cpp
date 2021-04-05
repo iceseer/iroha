@@ -79,13 +79,13 @@ using shared_model::interface::RolePermissionSet;
                            2)
 
 RocksDbSpecificQueryExecutor::RocksDbSpecificQueryExecutor(
-    rocksdb::Transaction &db_transaction,
+    std::shared_ptr<RocksDBPort> db_port,
     BlockStorage &block_store,
     std::shared_ptr<PendingTransactionStorage> pending_txs_storage,
     std::shared_ptr<shared_model::interface::QueryResponseFactory>
         response_factory,
     std::shared_ptr<shared_model::interface::PermissionToString> perm_converter)
-    : db_transaction_(db_transaction),
+    : db_port_(std::move(db_port)),
       block_store_(block_store),
       pending_txs_storage_(std::move(pending_txs_storage)),
       query_response_factory_{std::move(response_factory)},
