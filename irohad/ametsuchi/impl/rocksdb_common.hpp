@@ -7,16 +7,17 @@
 #define IROHA_ROCKSDB_COMMON_HPP
 
 #include <charconv>
+#include <mutex>
 #include <string>
 #include <string_view>
-#include <mutex>
 
 #include <fmt/compile.h>
 #include <fmt/format.h>
-#include <rocksdb/utilities/transaction.h>
 #include <rocksdb/utilities/optimistic_transaction_db.h>
+#include <rocksdb/utilities/transaction.h>
 #include "interfaces/common_objects/types.hpp"
 
+// clang-format off
 /**
  * ######################################
  * ############# LEGEND MAP #############
@@ -60,37 +61,39 @@
  * GetAccountTransactions(ACCOUNT, TS) -> KEY: wta/ACCOUNT/T/TS/
  * GetAccountAssets(DOMAIN,ACCOUNT)    -> KEY: wD/DOMAIN/a/ACCOUNT/x
  */
+// clang-format on
 
-#define RDB_DELIMITER     "/"
+#define RDB_DELIMITER "/"
 #define RDB_XXX RDB_DELIMITER "{}" RDB_DELIMITER
 
-#define RDB_ROOT          ""
-#define RDB_STORE         "s"
-#define RDB_WSV           "w"
-#define RDB_NETWORK       "n"
-#define RDB_SETTINGS      "i"
-#define RDB_ASSETS        "x"
-#define RDB_ROLES         "r"
-#define RDB_TRANSACTIONS  "t"
-#define RDB_ACCOUNTS      "a"
-#define RDB_PEERS         "p"
-#define RDB_STATUSES      "u"
-#define RDB_DETAILS       "d"
+#define RDB_ROOT ""
+#define RDB_STORE "s"
+#define RDB_WSV "w"
+#define RDB_NETWORK "n"
+#define RDB_SETTINGS "i"
+#define RDB_ASSETS "x"
+#define RDB_ROLES "r"
+#define RDB_TRANSACTIONS "t"
+#define RDB_ACCOUNTS "a"
+#define RDB_PEERS "p"
+#define RDB_STATUSES "u"
+#define RDB_DETAILS "d"
 #define RDB_GRANTABLE_PER "g"
-#define RDB_POSITION      "P"
-#define RDB_TIMESTAMP     "T"
-#define RDB_DOMAIN        "D"
-#define RDB_SIGNATORIES   "S"
-#define RDB_OPTIONS       "O"
+#define RDB_POSITION "P"
+#define RDB_TIMESTAMP "T"
+#define RDB_DOMAIN "D"
+#define RDB_SIGNATORIES "S"
+#define RDB_OPTIONS "O"
 
-#define RDB_F_QUORUM      "q"
-#define RDB_F_ASSET_SIZE  "I"
+#define RDB_F_QUORUM "q"
+#define RDB_F_ASSET_SIZE "I"
 
 #define RDB_PATH_DOMAIN RDB_ROOT /**/ RDB_WSV /**/ RDB_DOMAIN /**/ RDB_XXX
 #define RDB_PATH_ACCOUNT RDB_PATH_DOMAIN /**/ RDB_ACCOUNTS /**/ RDB_XXX
 
 namespace iroha::ametsuchi::fmtstrings {
-  static constexpr size_t kDelimiterSize = sizeof(RDB_DELIMITER)/sizeof(RDB_DELIMITER[0]) - 1ul;
+  static constexpr size_t kDelimiterSize =
+      sizeof(RDB_DELIMITER) / sizeof(RDB_DELIMITER[0]) - 1ul;
 
   /**
    * Paths
@@ -130,7 +133,8 @@ namespace iroha::ametsuchi::fmtstrings {
   static auto constexpr kAccountAssetSize{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_OPTIONS /**/ RDB_F_ASSET_SIZE)};
 
-  // domain_id/account_name/writer_domain_id/writer_account_name/key ➡️ value
+  // domain_id/account_name/writer_domain_id/writer_account_name/key ➡️
+  // value
   static auto constexpr kAccountDetail{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_DETAILS /**/ RDB_XXX /**/
                      RDB_XXX /**/ RDB_XXX)};
@@ -140,7 +144,9 @@ namespace iroha::ametsuchi::fmtstrings {
       RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_XXX)};
 
   // domain_id/account_name ➡️ permissions
-  // TODO(iceseer): Role is a Permission set, Account have role -> it determines Permissions for Account -> Delete a Role just drop Permissions for this Role.
+  // TODO(iceseer): Role is a Permission set, Account have role -> it determines
+  // Permissions for Account -> Delete a Role just drop Permissions for this
+  // Role.
   /*static auto constexpr kPermissions{FMT_STRING(
       "permissions/{}/{}")};  */
 
@@ -152,7 +158,7 @@ namespace iroha::ametsuchi::fmtstrings {
   // key ➡️ value
   static auto constexpr kSetting{
       FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_SETTINGS /**/ RDB_XXX)};
-}
+}  // namespace iroha::ametsuchi::fmtstrings
 
 #undef RDB_OPTIONS
 #undef RDB_F_ASSET_SIZE
@@ -192,8 +198,8 @@ namespace iroha::ametsuchi {
   };
 
   struct RocksDBPort : std::enable_shared_from_this<RocksDBPort> {
-    RocksDBPort(RocksDBPort const&) = delete;
-    RocksDBPort& operator=(RocksDBPort const&) = delete;
+    RocksDBPort(RocksDBPort const &) = delete;
+    RocksDBPort &operator=(RocksDBPort const &) = delete;
     RocksDBPort() = default;
 
     void initialize(std::string const &db_name) {
@@ -222,7 +228,7 @@ namespace iroha::ametsuchi {
     std::unique_ptr<rocksdb::OptimisticTransactionDB> transaction_db_;
   };
 
-  template<typename Tx>
+  template <typename Tx>
   class RocksDbCommon {
     inline auto &valueBuffer() {
       return tx_context_->value_buffer;

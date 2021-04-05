@@ -5,10 +5,10 @@
 
 #include "ametsuchi/impl/rocksdb_command_executor.hpp"
 
-#include <boost/algorithm/string.hpp>
-#include <boost/variant/apply_visitor.hpp>
 #include <fmt/core.h>
 #include <rocksdb/utilities/transaction.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/variant/apply_visitor.hpp>
 #include "ametsuchi/impl/executor_common.hpp"
 #include "ametsuchi/setting_query.hpp"
 #include "ametsuchi/vm_caller.hpp"
@@ -43,6 +43,7 @@ using shared_model::interface::permissions::Role;
 using shared_model::interface::GrantablePermissionSet;
 using shared_model::interface::RolePermissionSet;
 
+// clang-format off
 /**
  * RocksDB data structure.
  *
@@ -106,6 +107,7 @@ using shared_model::interface::RolePermissionSet;
  *                           |
  *                           +-<domain_1, value: default_role>
  */
+// clang-format on
 
 #define IROHA_ERROR_IF_CONDITION(condition, code, command_name, error_extra)   \
   if (condition) {                                                             \
@@ -160,14 +162,13 @@ using shared_model::interface::RolePermissionSet;
                            command.toString(),                              \
                            "")
 
-#define IROHA_CHECK_ERROR(name,value1) \
-  decltype(value1)::ValueInnerType name; \
-            if (auto result = (value1); result.which() == 1) { \
-return expected::makeError(CommandError{ result.assumeError() }); \
-} else { \
-name = std::move(boost::get<decltype(result)::ValueType>(result).value); \
-}
-
+#define IROHA_CHECK_ERROR(name, value1)                                      \
+  decltype(value1)::ValueInnerType name;                                     \
+  if (auto result = (value1); result.which() == 1) {                         \
+    return expected::makeError(CommandError{result.assumeError()});          \
+  } else {                                                                   \
+    name = std::move(boost::get<decltype(result)::ValueType>(result).value); \
+  }
 
 RocksDbCommandExecutor::RocksDbCommandExecutor(
     std::shared_ptr<RocksDBPort> db_port,
@@ -182,7 +183,8 @@ RocksDbCommandExecutor::RocksDbCommandExecutor(
 RocksDbCommandExecutor::~RocksDbCommandExecutor() = default;
 
 expected::Result<RolePermissionSet, CommandError>
-    RocksDbCommandExecutor::getAccountPermissions(std::string_view domain, std::string_view account) {
+RocksDbCommandExecutor::getAccountPermissions(std::string_view domain,
+                                              std::string_view account) {
   assert(!domain.empty());
   assert(!account.empty());
 
@@ -197,25 +199,23 @@ expected::Result<RolePermissionSet, CommandError>
           return false;
         auto const key = it->key().ToStringView();
 
-        auto const role =
-            key.substr(prefix_size + fmtstrings::kDelimiterSize,
-                       key.size() - prefix_size
-                       - 2ul * fmtstrings::kDelimiterSize);
+        auto const role = key.substr(
+            prefix_size + fmtstrings::kDelimiterSize,
+            key.size() - prefix_size - 2ul * fmtstrings::kDelimiterSize);
 
-        if(!role.empty())
+        if (!role.empty())
           roles.emplace_back(role);
         else {
           assert(!"Role can not be empty string!");
         }
+        return true;
       },
       fmtstrings::kPathAccountRoles,
       domain,
       account);
 
-  auto cmd = [&](){
-    return fmt::format(fmtstrings::kPathAccountRoles,
-                       domain,
-                       account);
+  auto cmd = [&]() {
+    return fmt::format(fmtstrings::kPathAccountRoles, domain, account);
   };
 
   IROHA_ERROR_IF_CONDITION(roles.empty(), 1001, cmd(), "");
@@ -239,7 +239,6 @@ CommandResult RocksDbCommandExecutor::execute(
   return boost::apply_visitor(
       [this, &creator_account_id, &tx_hash, cmd_index, do_validation](
           const auto &command) -> CommandResult {
-        RocksDbCommon common(db_context_);
         RolePermissionSet creator_permissions;
 
         if (do_validation) {
@@ -270,11 +269,10 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-
   RocksDbCommon common(db_context_);
   rocksdb::Status status;
 
-  //TODO(iceseer): fix the case there will be no delimiter
+  // TODO(iceseer): fix the case there will be no delimiter
   auto creator_names = splitId(creator_account_id);
   auto &creator_account_name = creator_names.at(0);
   auto &creator_domain_id = creator_names.at(1);
@@ -322,7 +320,8 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   result += amount;
   db_context_->value_buffer.assign(result.toStringRepr());
-  IROHA_ERROR_IF_CONDITION(db_context_->value_buffer[0] == 'N', 4, command.toString(), "")
+  IROHA_ERROR_IF_CONDITION(
+      db_context_->value_buffer[0] == 'N', 4, command.toString(), "")
 
   status = common.put(fmtstrings::kAccountAsset,
                       creator_domain_id,
@@ -344,8 +343,25 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  auto const peer = command.peer();
+  IROHA_ERROR_IF_CONDITION(!peer, 1002, command.toString(), "");
+
+  rocksdb::Status status;
+  RocksDbCommon common(db_context_);
+  if (do_validation) {
+    IROHA_ERROR_IF_NOT_SET(Role::kAddPeer)
+
+    status = common.get(fmtstrings::kPeer, peer->pubkey());
+    IROHA_ERROR_IF_FOUND(1)
+  }
+
+  db_context_->value_buffer.assign(peer->address());
+  status = common.put(fmtstrings::kPeer, peer->pubkey());
+  IROHA_ERROR_IF_NOT_OK();
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::AddSignatory &command,
@@ -381,8 +397,7 @@ CommandResult RocksDbCommandExecutor::operator()(
         fmtstrings::kAccountRole, domain_id, account_name, role_name);
     IROHA_ERROR_IF_FOUND(1)
 
-    status = common.get(
-        fmtstrings::kRole, role_name);
+    status = common.get(fmtstrings::kRole, role_name);
     IROHA_ERROR_IF_FOUND(2)
 
     RolePermissionSet role_permissions{db_context_->value_buffer};
@@ -631,7 +646,8 @@ CommandResult RocksDbCommandExecutor::operator()(
                            grantee_domain_id,
                            grantee_account_name);
   if (status.ok()) {
-    granted_account_permissions = GrantablePermissionSet{db_context_->value_buffer};
+    granted_account_permissions =
+        GrantablePermissionSet{db_context_->value_buffer};
   } else if (not status.IsNotFound()) {
     IROHA_ERROR_IF_NOT_OK()
   }
@@ -661,8 +677,24 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  IROHA_ERROR_IF_CONDITION(
+      command.pubkey().empty(), 1003, command.toString(), "");
+
+  rocksdb::Status status;
+  RocksDbCommon common(db_context_);
+  if (do_validation) {
+    IROHA_ERROR_IF_NOT_SET(Role::kRemovePeer)
+
+    status = common.get(fmtstrings::kPeer, command.pubkey());
+    IROHA_ERROR_IF_NOT_FOUND(3)
+  }
+
+  status = common.del(fmtstrings::kPeer, command.pubkey());
+  IROHA_ERROR_IF_NOT_OK();
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::RemoveSignatory &command,
@@ -709,7 +741,8 @@ CommandResult RocksDbCommandExecutor::operator()(
                                domain_id,
                                account_name);
       if (status.ok()) {
-        granted_account_permissions = GrantablePermissionSet{db_context_->value_buffer};
+        granted_account_permissions =
+            GrantablePermissionSet{db_context_->value_buffer};
       } else if (not status.IsNotFound()) {
         IROHA_ERROR_IF_NOT_OK()
       }
@@ -787,7 +820,8 @@ CommandResult RocksDbCommandExecutor::operator()(
     IROHA_ERROR_IF_NOT_FOUND(4)
 
     // get account permissions
-    auto r = getAccountPermissions(destination_domain_id, destination_account_name);
+    auto r =
+        getAccountPermissions(destination_domain_id, destination_account_name);
     IROHA_CHECK_ERROR(destination_permissions, r);
     IROHA_ERROR_IF_CONDITION(not destination_permissions.isSet(Role::kReceive),
                              2,
@@ -807,7 +841,8 @@ CommandResult RocksDbCommandExecutor::operator()(
                                source_domain_id,
                                source_account_name);
       if (status.ok()) {
-        granted_account_permissions = GrantablePermissionSet{db_context_->value_buffer};
+        granted_account_permissions =
+            GrantablePermissionSet{db_context_->value_buffer};
       } else if (not status.IsNotFound()) {
         IROHA_ERROR_IF_NOT_OK()
       }
@@ -860,7 +895,8 @@ CommandResult RocksDbCommandExecutor::operator()(
                       destination_account_name,
                       command.assetId());
   if (status.ok()) {
-    destination_balance = shared_model::interface::Amount(db_context_->value_buffer);
+    destination_balance =
+        shared_model::interface::Amount(db_context_->value_buffer);
   } else if (status.IsNotFound()) {
     ++account_asset_size;
   } else {
