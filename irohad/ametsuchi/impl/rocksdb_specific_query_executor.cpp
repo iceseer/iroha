@@ -89,13 +89,53 @@ RocksDbSpecificQueryExecutor::RocksDbSpecificQueryExecutor(
       block_store_(block_store),
       pending_txs_storage_(std::move(pending_txs_storage)),
       query_response_factory_{std::move(response_factory)},
-      perm_converter_(std::move(perm_converter)) {}
+      perm_converter_(std::move(perm_converter)) {
+  db_port_->prepareTransaction(*db_context_);
+}
+
+
+boost::optional<RolePermissionSet>
+RocksDbSpecificQueryExecutor::getAccountPermissions(std::string_view domain,
+                                              std::string_view account) const {
+  assert(!domain.empty());
+  assert(!account.empty());
+
+  /// TODO(iceseer): remove this vector!
+  std::vector<std::string> roles;
+  RocksDbCommon common(db_context_);
+  enumerateKeys(
+      common,
+      [&](auto const &role) {
+        if (!role.empty())
+          roles.emplace_back(role.ToStringView());
+        else {
+          assert(!"Role can not be empty string!");
+        }
+        return true;
+      },
+      fmtstrings::kPathAccountRoles,
+      domain,
+      account);
+
+  if (roles.empty())
+    return boost::none;
+
+  RolePermissionSet permissions;
+  for (auto &role : roles) {
+    auto status = common.get(fmtstrings::kRole, role);
+    if (!status.ok())
+      return boost::none;
+
+    permissions |= RolePermissionSet{db_context_->value_buffer};
+  }
+  return permissions;
+}
 
 QueryExecutorResult RocksDbSpecificQueryExecutor::execute(
     const shared_model::interface::Query &qry) {
   return boost::apply_visitor(
       [this, &qry](const auto &query) {
-        RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+        RocksDbCommon common(db_context_);
 
         auto names = splitId(qry.creatorAccountId());
         auto &account_name = names.at(0);
@@ -104,10 +144,15 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::execute(
         auto &query_hash = qry.hash();
 
         // get account permissions
-        auto status =
-            common.get(fmtstrings::kPermissions, domain_id, account_name);
-        IROHA_ERROR_IF_NOT_OK()
-        RolePermissionSet creator_permissions{value_buffer_};
+        RolePermissionSet creator_permissions;
+        if (auto result = getAccountPermissions(domain_id, account_name))
+          creator_permissions = std::move(result.value());
+        else
+          return query_response_factory_->createErrorQueryResponse(
+              ErrorQueryType::kStatefulFailed,
+              query.toString(),
+              1001,
+              query_hash);
 
         return (*this)(
             query, qry.creatorAccountId(), query_hash, creator_permissions);
@@ -118,17 +163,18 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::execute(
 bool RocksDbSpecificQueryExecutor::hasAccountRolePermission(
     shared_model::interface::permissions::Role permission,
     const std::string &account_id) const {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   auto names = splitId(account_id);
   auto &account_name = names.at(0);
   auto &domain_id = names.at(1);
 
-  auto status = common.get(fmtstrings::kPermissions, domain_id, account_name);
-  if (not status.ok()) {
+  RolePermissionSet account_permissions;
+  if (auto result = getAccountPermissions(domain_id, account_name)) {
+    account_permissions = boost::get<RolePermissionSet>(std::move(result));
+  } else {
     return false;
   }
-  RolePermissionSet account_permissions{value_buffer_};
 
   return account_permissions.isSet(permission);
 }
@@ -138,7 +184,7 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
   auto creator_names = splitId(creator_id);
   auto &creator_account_name = creator_names.at(0);
   auto &creator_domain_id = creator_names.at(1);
@@ -165,7 +211,25 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
   writer.EndObject();
 
   std::vector<std::string> roles;
-  // TODO fill roles
+  if (!enumerateKeys(
+      common,
+      [&](auto const &role) {
+        if (!role.empty())
+          roles.emplace_back(role.ToStringView());
+        else {
+          assert(!"Role can not be empty string!");
+        }
+        return true;
+      },
+      fmtstrings::kPathAccountRoles,
+      domain_id,
+      account_name)) {
+    return query_response_factory_->createErrorQueryResponse(
+        ErrorQueryType::kStatefulFailed,
+        fmt::format("{}, enumerate keys failed.", query.toString()),
+        1003,
+        query_hash);
+  }
 
   return query_response_factory_->createAccountResponse(
       query.accountId(),
@@ -188,7 +252,7 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
   auto creator_names = splitId(creator_id);
   auto &creator_account_name = creator_names.at(0);
   auto &creator_domain_id = creator_names.at(1);
@@ -202,20 +266,30 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
                              Role::kGetMySignatories);
 
   std::vector<std::string> signatories;
-  auto it = common.seek(fmtstrings::kSignatory, domain_id, account_name, "");
-  auto status = it->status();
-  IROHA_ERROR_IF_NOT_OK()
-  rocksdb::Slice key_buffer_slice(key_buffer_.data(), key_buffer_.size());
-  for (; it->Valid() and it->key().starts_with(key_buffer_slice); it->Next()) {
-    auto key = it->key();
-    signatories.emplace_back(key.data() + key_buffer_slice.size(),
-                             key.size() - key_buffer_slice.size());
+  if (!enumerateKeys(
+          common,
+          [&](auto const &signatory) {
+            signatories.emplace_back(signatory.ToStringView());
+            return true;
+          },
+          fmtstrings::kSignatory,
+          domain_id,
+          account_name,
+          "")) {
+    return query_response_factory_->createErrorQueryResponse(
+        ErrorQueryType::kStatefulFailed,
+        fmt::format("{}", query.toString()),
+        1,
+        query_hash);
   }
-  status = it->status();
-  IROHA_ERROR_IF_NOT_OK()
 
-  status = signatories.empty() ? rocksdb::Status::NotFound() : status;
-  IROHA_ERROR_IF_NOT_FOUND(ErrorQueryType::kNoSignatories, 0)
+  if (signatories.empty())
+    return query_response_factory_->createErrorQueryResponse(
+        ErrorQueryType::kNoSignatories,
+        fmt::format(
+            "{}, status: not found", query.toString()),
+        0,
+        query_hash);
 
   return query_response_factory_->createSignatoriesResponse(signatories,
                                                             query_hash);
@@ -247,7 +321,7 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
   rocksdb::Status status;
   auto creator_names = splitId(creator_id);
   auto &creator_account_name = creator_names.at(0);
@@ -287,12 +361,12 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
                         domain_id,
                         account_name,
                         req_first_asset_id.value_or(""));
-  auto prefix_size = key_buffer_.size()
+  auto prefix_size = db_context_->key_buffer.size()
       - (req_first_asset_id |
          [](auto const &first_asset_id) { return first_asset_id.size(); });
   status = it->status();
   IROHA_ERROR_IF_NOT_OK()
-  rocksdb::Slice key_buffer_slice(key_buffer_.data(), prefix_size);
+  rocksdb::Slice key_buffer_slice(db_context_->key_buffer.data(), prefix_size);
   for (; it->Valid() and it->key().starts_with(key_buffer_slice)
        and (not req_page_size or assets.size() < req_page_size.value());
        it->Next()) {
@@ -333,15 +407,40 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::GetRoles &query,
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  RocksDbCommon common(db_context_);
+  IROHA_ERROR_IF_NOT_SET(Role::kGetRoles);
+
+  std::vector<std::string> roles;
+  if (!enumerateKeys(
+          common,
+          [&](auto const &role) {
+            if (!role.empty())
+              roles.emplace_back(role.ToStringView());
+            else {
+              assert(!"Role can not be empty string!");
+            }
+            return true;
+          },
+          fmtstrings::kRole,
+          "")) {
+    return query_response_factory_->createErrorQueryResponse(
+        ErrorQueryType::kStatefulFailed,
+        fmt::format("{}, enumerate keys failed.", query.toString()),
+        1003,
+        query_hash);
+  }
+
+  return query_response_factory_->createRolesResponse(std::move(roles),
+                                                      query_hash);
+}
 
 QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::GetRolePermissions &query,
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_transaction_, key_buffer_, value_buffer_);
+  RocksDbCommon common(db_context_);
 
   IROHA_ERROR_IF_NOT_SET(Role::kGetRoles)
 
@@ -350,7 +449,7 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
   // get role permissions
   auto status = common.get(fmtstrings::kRole, role_id);
   IROHA_ERROR_IF_NOT_FOUND(ErrorQueryType::kNoRoles, 0)
-  RolePermissionSet role_permissions{value_buffer_};
+  RolePermissionSet role_permissions{db_context_->value_buffer};
 
   return query_response_factory_->createRolePermissionsResponse(
       role_permissions, query_hash);

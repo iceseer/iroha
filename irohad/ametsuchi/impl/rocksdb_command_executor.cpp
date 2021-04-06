@@ -167,7 +167,7 @@ using shared_model::interface::RolePermissionSet;
   if (auto result = (value1); result.which() == 1) {                         \
     return expected::makeError(CommandError{result.assumeError()});          \
   } else {                                                                   \
-    name = std::move(boost::get<decltype(result)::ValueType>(result).value); \
+    name = std::move(boost::get<decltype(result)::ValueType>(std::move(result)).value); \
   }
 
 RocksDbCommandExecutor::RocksDbCommandExecutor(

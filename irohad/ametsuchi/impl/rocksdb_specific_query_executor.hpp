@@ -12,6 +12,7 @@
 #include "interfaces/iroha_internal/query_response_factory.hpp"
 #include "interfaces/permissions.hpp"
 #include "ametsuchi/impl/rocksdb_common.hpp"
+#include "common/result.hpp"
 
 namespace rocksdb {
   class Transaction;
@@ -41,7 +42,6 @@ namespace iroha {
 
 namespace iroha::ametsuchi {
   class BlockStorage;
-
 
   class RocksDbSpecificQueryExecutor : public SpecificQueryExecutor {
    public:
@@ -146,9 +146,12 @@ namespace iroha::ametsuchi {
         shared_model::interface::RolePermissionSet const &creator_permissions);
 
    private:
-    fmt::memory_buffer mutable key_buffer_;
-    std::string mutable value_buffer_;
+    boost::optional<shared_model::interface::RolePermissionSet>
+    getAccountPermissions(std::string_view domain, std::string_view account) const;
+
+   private:
     std::shared_ptr<RocksDBPort> db_port_;
+    mutable std::shared_ptr<RocksDBContext> db_context_;
     BlockStorage &block_store_;
     std::shared_ptr<PendingTransactionStorage> pending_txs_storage_;
     std::shared_ptr<shared_model::interface::QueryResponseFactory>

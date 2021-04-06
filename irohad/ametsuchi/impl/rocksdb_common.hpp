@@ -98,6 +98,7 @@ namespace iroha::ametsuchi::fmtstrings {
   /**
    * Paths
    */
+  // domain_id/account_name
   static auto constexpr kPathAccountRoles{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_ROLES)};
 
@@ -257,9 +258,9 @@ namespace iroha::ametsuchi {
     }
 
     template <typename S, typename... Args>
-    auto get(S &fmtstring, Args &&... args) {
+    auto get(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
-      fmt::format_to(keyBuffer(), fmtstring, args...);
+      fmt::format_to(keyBuffer(), fmtstring, std::forward<Args>(args)...);
 
       valueBuffer().clear();
       return transaction()->Get(
@@ -269,9 +270,9 @@ namespace iroha::ametsuchi {
     }
 
     template <typename S, typename... Args>
-    auto put(S &fmtstring, Args &&... args) {
+    auto put(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
-      fmt::format_to(keyBuffer(), fmtstring, args...);
+      fmt::format_to(keyBuffer(), fmtstring, std::forward<Args>(args)...);
 
       return transaction()->Put(
           std::string_view(keyBuffer().data(), keyBuffer().size()),
@@ -279,43 +280,59 @@ namespace iroha::ametsuchi {
     }
 
     template <typename S, typename... Args>
-    auto del(S &fmtstring, Args &&... args) {
+    auto del(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
-      fmt::format_to(keyBuffer(), fmtstring, args...);
+      fmt::format_to(keyBuffer(), fmtstring, std::forward<Args>(args)...);
 
       return transaction()->Delete(
           std::string_view(keyBuffer().data(), keyBuffer().size()));
     }
 
     template <typename S, typename... Args>
-    auto seek(S &fmtstring, Args &&... args) {
+    auto seek(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
-      fmt::format_to(keyBuffer(), fmtstring, args...);
+      fmt::format_to(keyBuffer(), fmtstring, std::forward<Args>(args)...);
 
-      std::unique_ptr<rocksdb::Iterator> it;
-
-      it.reset(transaction()->GetIterator(rocksdb::ReadOptions()));
+      std::unique_ptr<rocksdb::Iterator> it(
+          transaction()->GetIterator(rocksdb::ReadOptions()));
       it->Seek(std::string_view(keyBuffer().data(), keyBuffer().size()));
 
       return it;
     }
 
     template <typename F, typename S, typename... Args>
-    void enumerate(F &&func, S &fmtstring, Args &&... args) {
-      keyBuffer().clear();
-      fmt::format_to(keyBuffer(), fmtstring, args...);
-      std::string_view const key(keyBuffer().data(), keyBuffer().size());
+    bool enumerate(F &&func, S const &fmtstring, Args &&... args) {
+      auto it = seek(fmtstring, std::forward<Args>(args)...);
+      if (!it->status().ok())
+        return false;
 
-      std::unique_ptr<rocksdb::Iterator> it(
-          transaction()->GetIterator(rocksdb::ReadOptions()));
-      for (it->Seek(key); it->Valid() && it->key().starts_with(key); it->Next())
+      rocksdb::Slice const key(keyBuffer().data(), keyBuffer().size());
+      for (; it->Valid() && it->key().starts_with(key); it->Next())
         if (!std::forward<F>(func)(it, key.size()))
           break;
+
+      return it->status().ok();
     }
 
    private:
     Tx tx_context_;
   };
+
+  template <typename Common, typename F, typename S, typename... Args>
+  inline auto enumerateKeys(Common &rdb,
+                            F &&func,
+                            S const &strformat,
+                            Args &&... args) {
+    return rdb.enumerate(
+        [func{std::forward<F>(func)}](auto const &it, auto const prefix_size) {
+          auto const key = it->key();
+          return func(rocksdb::Slice(
+              key.data() + prefix_size + fmtstrings::kDelimiterSize,
+              key.size() - prefix_size - 2ull * fmtstrings::kDelimiterSize));
+        },
+        strformat,
+        std::forward<Args>(args)...);
+  }
 
 }  // namespace iroha::ametsuchi
 
