@@ -9,10 +9,10 @@
 #include "ametsuchi/specific_query_executor.hpp"
 
 #include <fmt/format.h>
-#include "interfaces/iroha_internal/query_response_factory.hpp"
-#include "interfaces/permissions.hpp"
 #include "ametsuchi/impl/rocksdb_common.hpp"
 #include "common/result.hpp"
+#include "interfaces/iroha_internal/query_response_factory.hpp"
+#include "interfaces/permissions.hpp"
 
 namespace rocksdb {
   class Transaction;
@@ -147,7 +147,8 @@ namespace iroha::ametsuchi {
 
    private:
     boost::optional<shared_model::interface::RolePermissionSet>
-    getAccountPermissions(std::string_view domain, std::string_view account) const;
+    getAccountPermissions(std::string_view domain,
+                          std::string_view account) const;
 
    private:
     std::shared_ptr<RocksDBPort> db_port_;

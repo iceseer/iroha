@@ -165,12 +165,13 @@ using shared_model::interface::RolePermissionSet;
                            command.toString(),                              \
                            "")
 
-#define IROHA_CHECK_ERROR(name, value1)                                      \
-  decltype(value1)::ValueInnerType name;                                     \
-  if (auto result = (value1); result.which() == 1) {                         \
-    return expected::makeError(CommandError{result.assumeError()});          \
-  } else {                                                                   \
-    name = std::move(boost::get<decltype(result)::ValueType>(std::move(result)).value); \
+#define IROHA_CHECK_ERROR(name, value1)                                    \
+  decltype(value1)::ValueInnerType name;                                   \
+  if (auto result = (value1); result.which() == 1) {                       \
+    return expected::makeError(CommandError{result.assumeError()});        \
+  } else {                                                                 \
+    name = std::move(                                                      \
+        boost::get<decltype(result)::ValueType>(std::move(result)).value); \
   }
 
 RocksDbCommandExecutor::RocksDbCommandExecutor(

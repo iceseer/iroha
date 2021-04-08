@@ -11,8 +11,8 @@
 #include <boost/filesystem.hpp>
 
 #include "ametsuchi/burrow_storage.hpp"
-#include "ametsuchi/impl/rocksdb_common.hpp"
 #include "ametsuchi/impl/rocksdb_command_executor.hpp"
+#include "ametsuchi/impl/rocksdb_common.hpp"
 #include "ametsuchi/impl/rocksdb_specific_query_executor.hpp"
 #include "backend/protobuf/proto_permission_to_string.hpp"
 #include "backend/protobuf/proto_query_response_factory.hpp"

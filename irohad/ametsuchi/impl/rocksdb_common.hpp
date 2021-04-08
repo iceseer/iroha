@@ -106,6 +106,18 @@ namespace iroha::ametsuchi::fmtstrings {
   static auto constexpr kPathAccountRoles{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_ROLES)};
 
+  // no params
+  static auto constexpr kPathPeers{FMT_STRING(
+      RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_ADDRESS)};
+
+  // domain_id/account_name
+  static auto constexpr kPathSignatories{
+      FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_SIGNATORIES)};
+
+  // no param
+  static auto constexpr kPathRoles{
+      FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_ROLES)};
+
   // domain_id/account_name
   static auto constexpr kQuorum{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_OPTIONS /**/ RDB_F_QUORUM)};
@@ -145,12 +157,14 @@ namespace iroha::ametsuchi::fmtstrings {
                      RDB_XXX /**/ RDB_XXX)};
 
   // pubkey ➡️ address
-  static auto constexpr kPeerAddress{FMT_STRING(
-      RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_ADDRESS /**/ RDB_XXX)};
+  static auto constexpr kPeerAddress{
+      FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/
+                     RDB_ADDRESS /**/ RDB_XXX)};
 
   // pubkey ➡️ tls
-  static auto constexpr kPeerTLS{FMT_STRING(
-      RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_TLS /**/ RDB_XXX)};
+  static auto constexpr kPeerTLS{
+      FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/
+                     RDB_TLS /**/ RDB_XXX)};
 
   // domain_id/account_name ➡️ permissions
   // TODO(iceseer): Role is a Permission set, Account have role -> it determines
@@ -339,6 +353,24 @@ namespace iroha::ametsuchi {
           return func(rocksdb::Slice(
               key.data() + prefix_size + fmtstrings::kDelimiterSize,
               key.size() - prefix_size - 2ull * fmtstrings::kDelimiterSize));
+        },
+        strformat,
+        std::forward<Args>(args)...);
+  }
+
+  template <typename Common, typename F, typename S, typename... Args>
+  inline auto enumerateKeysAndValues(Common &rdb,
+                                     F &&func,
+                                     S const &strformat,
+                                     Args &&... args) {
+    return rdb.enumerate(
+        [func{std::forward<F>(func)}](auto const &it, auto const prefix_size) {
+          auto const key = it->key();
+          return func(
+              rocksdb::Slice(
+                  key.data() + prefix_size + fmtstrings::kDelimiterSize,
+                  key.size() - prefix_size - 2ull * fmtstrings::kDelimiterSize),
+              it->value());
         },
         strformat,
         std::forward<Args>(args)...);

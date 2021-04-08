@@ -5,13 +5,15 @@
 
 #include "ametsuchi/impl/rocksdb_specific_query_executor.hpp"
 
-#include <boost/algorithm/string.hpp>
 #include <fmt/core.h>
 #include <rapidjson/stringbuffer.h>
 #include <rapidjson/writer.h>
 #include <rocksdb/utilities/transaction.h>
+#include <boost/algorithm/string.hpp>
+#include <boost/range/adaptor/transformed.hpp>
 #include "ametsuchi/impl/executor_common.hpp"
 #include "ametsuchi/impl/rocksdb_common.hpp"
+#include "backend/plain/peer.hpp"
 #include "common/bind.hpp"
 #include "interfaces/common_objects/amount.hpp"
 #include "interfaces/queries/asset_pagination_meta.hpp"
@@ -93,29 +95,27 @@ RocksDbSpecificQueryExecutor::RocksDbSpecificQueryExecutor(
   db_port_->prepareTransaction(*db_context_);
 }
 
-
 boost::optional<RolePermissionSet>
-RocksDbSpecificQueryExecutor::getAccountPermissions(std::string_view domain,
-                                              std::string_view account) const {
+RocksDbSpecificQueryExecutor::getAccountPermissions(
+    std::string_view domain, std::string_view account) const {
   assert(!domain.empty());
   assert(!account.empty());
 
   /// TODO(iceseer): remove this vector!
   std::vector<std::string> roles;
   RocksDbCommon common(db_context_);
-  enumerateKeys(
-      common,
-      [&](auto const &role) {
-        if (!role.empty())
-          roles.emplace_back(role.ToStringView());
-        else {
-          assert(!"Role can not be empty string!");
-        }
-        return true;
-      },
-      fmtstrings::kPathAccountRoles,
-      domain,
-      account);
+  enumerateKeys(common,
+                [&](auto const &role) {
+                  if (!role.empty())
+                    roles.emplace_back(role.ToStringView());
+                  else {
+                    assert(!"Role can not be empty string!");
+                  }
+                  return true;
+                },
+                fmtstrings::kPathAccountRoles,
+                domain,
+                account);
 
   if (roles.empty())
     return boost::none;
@@ -211,19 +211,18 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
   writer.EndObject();
 
   std::vector<std::string> roles;
-  if (!enumerateKeys(
-      common,
-      [&](auto const &role) {
-        if (!role.empty())
-          roles.emplace_back(role.ToStringView());
-        else {
-          assert(!"Role can not be empty string!");
-        }
-        return true;
-      },
-      fmtstrings::kPathAccountRoles,
-      domain_id,
-      account_name)) {
+  if (!enumerateKeys(common,
+                     [&](auto const &role) {
+                       if (!role.empty())
+                         roles.emplace_back(role.ToStringView());
+                       else {
+                         assert(!"Role can not be empty string!");
+                       }
+                       return true;
+                     },
+                     fmtstrings::kPathAccountRoles,
+                     domain_id,
+                     account_name)) {
     return query_response_factory_->createErrorQueryResponse(
         ErrorQueryType::kStatefulFailed,
         fmt::format("{}, enumerate keys failed.", query.toString()),
@@ -266,16 +265,14 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
                              Role::kGetMySignatories);
 
   std::vector<std::string> signatories;
-  if (!enumerateKeys(
-          common,
-          [&](auto const &signatory) {
-            signatories.emplace_back(signatory.ToStringView());
-            return true;
-          },
-          fmtstrings::kSignatory,
-          domain_id,
-          account_name,
-          "")) {
+  if (!enumerateKeys(common,
+                     [&](auto const &signatory) {
+                       signatories.emplace_back(signatory.ToStringView());
+                       return true;
+                     },
+                     fmtstrings::kPathSignatories,
+                     domain_id,
+                     account_name)) {
     return query_response_factory_->createErrorQueryResponse(
         ErrorQueryType::kStatefulFailed,
         fmt::format("{}", query.toString()),
@@ -286,8 +283,7 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
   if (signatories.empty())
     return query_response_factory_->createErrorQueryResponse(
         ErrorQueryType::kNoSignatories,
-        fmt::format(
-            "{}, status: not found", query.toString()),
+        fmt::format("{}, status: not found", query.toString()),
         0,
         query_hash);
 
@@ -412,18 +408,16 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
   IROHA_ERROR_IF_NOT_SET(Role::kGetRoles);
 
   std::vector<std::string> roles;
-  if (!enumerateKeys(
-          common,
-          [&](auto const &role) {
-            if (!role.empty())
-              roles.emplace_back(role.ToStringView());
-            else {
-              assert(!"Role can not be empty string!");
-            }
-            return true;
-          },
-          fmtstrings::kRole,
-          "")) {
+  if (!enumerateKeys(common,
+                     [&](auto const &role) {
+                       if (!role.empty())
+                         roles.emplace_back(role.ToStringView());
+                       else {
+                         assert(!"Role can not be empty string!");
+                       }
+                       return true;
+                     },
+                     fmtstrings::kPathRoles)) {
     return query_response_factory_->createErrorQueryResponse(
         ErrorQueryType::kStatefulFailed,
         fmt::format("{}, enumerate keys failed.", query.toString()),
@@ -459,8 +453,26 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::GetAssetInfo &query,
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  IROHA_ERROR_IF_NOT_SET(Role::kReadAssets)
+
+  auto names = splitId(query.assetId());
+  auto &asset_name = names.at(0);
+  auto &domain_id = names.at(1);
+
+  RocksDbCommon common(db_context_);
+  auto status = common.get(fmtstrings::kAsset, domain_id, asset_name);
+  IROHA_ERROR_IF_NOT_FOUND(ErrorQueryType::kNoAsset, 3)
+
+  uint64_t precision;
+  common.decode(precision);
+
+  return query_response_factory_->createAssetResponse(
+      std::string{asset_name},
+      std::string{domain_id},
+      static_cast<shared_model::interface::types::PrecisionType>(precision),
+      query_hash);
+}
 
 QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::GetPendingTransactions &query,
@@ -473,8 +485,41 @@ QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::GetPeers &query,
     const shared_model::interface::types::AccountIdType &creator_id,
     const shared_model::interface::types::HashType &query_hash,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  IROHA_ERROR_IF_NOT_SET(Role::kGetPeers);
+
+  RocksDbCommon common(db_context_);
+  std::vector<std::shared_ptr<shared_model::plain::Peer>> peers;
+
+  enumerateKeysAndValues(
+      common,
+      [&](auto pubkey, auto address) {
+        if (!pubkey.empty())
+          peers.emplace_back(std::make_shared<shared_model::plain::Peer>(
+              address.ToStringView(),
+              std::string{pubkey.ToStringView()},
+              std::nullopt));
+        else
+          assert(!"Pubkey can not be empty!");
+
+        return true;
+      },
+      fmtstrings::kPathPeers);
+
+  for (auto &peer : peers) {
+    auto status = common.get(fmtstrings::kPeerTLS, peer->pubkey());
+    if (status.IsNotFound())
+      continue;
+    IROHA_ERROR_IF_NOT_OK()
+
+    peer->setTlsCertificate(db_context_->value_buffer);
+  }
+
+  return query_response_factory_->createPeersResponse(
+      std::vector<std::shared_ptr<shared_model::interface::Peer>>(peers.begin(),
+                                                                  peers.end()),
+      query_hash);
+}
 
 QueryExecutorResult RocksDbSpecificQueryExecutor::operator()(
     const shared_model::interface::GetEngineReceipts &query,

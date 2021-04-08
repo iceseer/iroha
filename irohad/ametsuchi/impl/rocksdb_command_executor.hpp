@@ -10,9 +10,8 @@
 
 #include <fmt/format.h>
 #include "ametsuchi/command_executor.hpp"
-#include "interfaces/permissions.hpp"
 #include "ametsuchi/impl/rocksdb_common.hpp"
-
+#include "interfaces/permissions.hpp"
 
 namespace rocksdb {
   class Transaction;
@@ -224,8 +223,9 @@ namespace iroha::ametsuchi {
         shared_model::interface::RolePermissionSet const &creator_permissions);
 
    private:
-    inline expected::Result<shared_model::interface::RolePermissionSet, CommandError>
-        getAccountPermissions(std::string_view domain, std::string_view account);
+    inline expected::Result<shared_model::interface::RolePermissionSet,
+                            CommandError>
+    getAccountPermissions(std::string_view domain, std::string_view account);
 
    private:
     std::shared_ptr<RocksDBPort> db_port_;

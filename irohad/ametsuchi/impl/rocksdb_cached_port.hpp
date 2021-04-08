@@ -13,8 +13,8 @@
 #include <fmt/compile.h>
 #include <fmt/format.h>
 #include <rocksdb/utilities/transaction.h>
-#include "interfaces/common_objects/types.hpp"
 #include "ametsuchi/impl/rocksdb_common.hpp"
+#include "interfaces/common_objects/types.hpp"
 
 namespace {
   auto constexpr kValue{FMT_STRING("{}")};
@@ -25,8 +25,7 @@ namespace iroha::ametsuchi {
   class RocksDbCachedPort {
    public:
     RocksDbCachedPort(RocksDbCommon &db)
-        : db_(db), key_buffer_(key_buffer),
-          value_buffer_(value_buffer) { }
+        : db_(db), key_buffer_(key_buffer), value_buffer_(value_buffer) {}
 
     auto encode(uint64_t number) {
       RocksDbCommon::encode(number);
@@ -105,4 +104,4 @@ namespace iroha::ametsuchi {
 
 }  // namespace iroha::ametsuchi
 
-#endif//IROHA_ROCKSDB_CACHED_PORT_HPP
+#endif  // IROHA_ROCKSDB_CACHED_PORT_HPP
