@@ -45,6 +45,8 @@
  * ### DOMAIN        ##       D       ###
  * ### SIGNATORIES   ##       S       ###
  * ### OPTIONS       ##       O       ###
+ * ### ADDRESS       ##       M       ###
+ * ### TLS           ##       N       ###
  * ######################################
  *
  * ######################################
@@ -84,6 +86,8 @@
 #define RDB_DOMAIN "D"
 #define RDB_SIGNATORIES "S"
 #define RDB_OPTIONS "O"
+#define RDB_ADDRESS "M"
+#define RDB_TLS "N"
 
 #define RDB_F_QUORUM "q"
 #define RDB_F_ASSET_SIZE "I"
@@ -141,8 +145,12 @@ namespace iroha::ametsuchi::fmtstrings {
                      RDB_XXX /**/ RDB_XXX)};
 
   // pubkey ➡️ address
-  static auto constexpr kPeer{FMT_STRING(
-      RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_XXX)};
+  static auto constexpr kPeerAddress{FMT_STRING(
+      RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_ADDRESS /**/ RDB_XXX)};
+
+  // pubkey ➡️ tls
+  static auto constexpr kPeerTLS{FMT_STRING(
+      RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_TLS /**/ RDB_XXX)};
 
   // domain_id/account_name ➡️ permissions
   // TODO(iceseer): Role is a Permission set, Account have role -> it determines
@@ -161,6 +169,8 @@ namespace iroha::ametsuchi::fmtstrings {
       FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_SETTINGS /**/ RDB_XXX)};
 }  // namespace iroha::ametsuchi::fmtstrings
 
+#undef RDB_ADDRESS
+#undef RDB_TLS
 #undef RDB_OPTIONS
 #undef RDB_F_ASSET_SIZE
 #undef RDB_PATH_DOMAIN

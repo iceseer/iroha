@@ -51,8 +51,11 @@ using shared_model::interface::RolePermissionSet;
  *        |         +-<height_2, value:block>
  *        |         +-<height_3, value:block>
  *        |
- *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-<peer_1_pubkey, value:address>
- *                |           |         +-<peer_2_pubkey, value:address>
+ *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-|ADDRESS|-+-<peer_1_pubkey, value:address>
+ *                |           |         |           +-<peer_2_pubkey, value:address>
+ *                |           |         |
+ *                |           |         +-|TLS|-+-<peer_1, value:tls>
+ *                |           |                 +-<peer_2, value:tls>
  *                |           |
  *                |           +-|STORE|-+-<store height>
  *                |                     +-<top block hash>
@@ -352,13 +355,21 @@ CommandResult RocksDbCommandExecutor::operator()(
   if (do_validation) {
     IROHA_ERROR_IF_NOT_SET(Role::kAddPeer)
 
-    status = common.get(fmtstrings::kPeer, peer->pubkey());
+    status = common.get(fmtstrings::kPeerAddress, peer->pubkey());
     IROHA_ERROR_IF_FOUND(1)
   }
 
+  /// Store address
   db_context_->value_buffer.assign(peer->address());
-  status = common.put(fmtstrings::kPeer, peer->pubkey());
+  status = common.put(fmtstrings::kPeerAddress, peer->pubkey());
   IROHA_ERROR_IF_NOT_OK();
+
+  /// Store TLS if present
+  if (peer->tlsCertificate().has_value()) {
+    db_context_->value_buffer.assign(peer->tlsCertificate().value());
+    status = common.put(fmtstrings::kPeerTLS, peer->pubkey());
+    IROHA_ERROR_IF_NOT_OK();
+  }
 
   return {};
 }
@@ -686,11 +697,14 @@ CommandResult RocksDbCommandExecutor::operator()(
   if (do_validation) {
     IROHA_ERROR_IF_NOT_SET(Role::kRemovePeer)
 
-    status = common.get(fmtstrings::kPeer, command.pubkey());
+    status = common.get(fmtstrings::kPeerAddress, command.pubkey());
     IROHA_ERROR_IF_NOT_FOUND(3)
   }
 
-  status = common.del(fmtstrings::kPeer, command.pubkey());
+  status = common.del(fmtstrings::kPeerAddress, command.pubkey());
+  IROHA_ERROR_IF_NOT_OK();
+
+  status = common.del(fmtstrings::kPeerTLS, command.pubkey());
   IROHA_ERROR_IF_NOT_OK();
 
   return {};
