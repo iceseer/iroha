@@ -381,8 +381,46 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  auto creator_names = splitId(creator_account_id);
+  auto &creator_account_name = creator_names.at(0);
+  auto &creator_domain_id = creator_names.at(1);
+
+  auto names = splitId(command.accountId());
+  auto &account_name = names.at(0);
+  auto &domain_id = names.at(1);
+
+  RocksDbCommon common(db_context_);
+  rocksdb::Status status;
+  if (do_validation) {
+    status = common.get(fmtstrings::kGranted,
+                        creator_domain_id,
+                        creator_account_name,
+                        domain_id,
+                        account_name);
+
+    GrantablePermissionSet granted_account_permissions;
+    if (status.ok()) {
+      granted_account_permissions =
+          GrantablePermissionSet{db_context_->value_buffer};
+    } else if (not status.IsNotFound()) {
+      IROHA_ERROR_IF_NOT_OK()
+    }
+
+    IROHA_ERROR_IF_NOT_ROLE_OR_GRANTABLE_SET(Role::kAddSignatory,
+                                             Grantable::kAddMySignatory)
+
+    status = common.get(
+        fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
+    IROHA_ERROR_IF_FOUND(2)
+  }
+
+  status = common.put(
+      fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
+  IROHA_ERROR_IF_NOT_OK()
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::AppendRole &command,
@@ -717,8 +755,46 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  auto creator_names = splitId(creator_account_id);
+  auto &creator_account_name = creator_names.at(0);
+  auto &creator_domain_id = creator_names.at(1);
+
+  auto names = splitId(command.accountId());
+  auto &account_name = names.at(0);
+  auto &domain_id = names.at(1);
+
+  RocksDbCommon common(db_context_);
+  rocksdb::Status status;
+  if (do_validation) {
+    status = common.get(fmtstrings::kGranted,
+                        creator_domain_id,
+                        creator_account_name,
+                        domain_id,
+                        account_name);
+
+    GrantablePermissionSet granted_account_permissions;
+    if (status.ok()) {
+      granted_account_permissions =
+          GrantablePermissionSet{db_context_->value_buffer};
+    } else if (not status.IsNotFound()) {
+      IROHA_ERROR_IF_NOT_OK()
+    }
+
+    IROHA_ERROR_IF_NOT_ROLE_OR_GRANTABLE_SET(Role::kRemoveSignatory,
+                                             Grantable::kRemoveMySignatory)
+
+    status = common.get(
+        fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
+    IROHA_ERROR_IF_NOT_FOUND(3)
+  }
+
+  status = common.del(
+      fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
+  IROHA_ERROR_IF_NOT_OK()
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::RevokePermission &command,
@@ -726,8 +802,60 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  RocksDbCommon common(db_context_);
+
+  auto grantee_names = splitId(creator_account_id);
+  auto &grantee_account_name = grantee_names.at(0);
+  auto &grantee_domain_id = grantee_names.at(1);
+
+  auto names = splitId(command.accountId());
+  auto &account_name = names.at(0);
+  auto &domain_id = names.at(1);
+
+  auto const revoked_perm = command.permissionName();
+  auto required_perm =
+      shared_model::interface::permissions::permissionFor(revoked_perm);
+
+  if (do_validation) {
+    IROHA_ERROR_IF_NOT_SET(required_perm)
+
+    // check if account exists
+    auto status = common.get(fmtstrings::kQuorum, domain_id, account_name);
+    IROHA_ERROR_IF_NOT_FOUND(3)
+  }
+
+  GrantablePermissionSet granted_account_permissions;
+  auto status = common.get(fmtstrings::kGranted,
+                           domain_id,
+                           account_name,
+                           grantee_domain_id,
+                           grantee_account_name);
+  if (status.ok()) {
+    granted_account_permissions =
+        GrantablePermissionSet{db_context_->value_buffer};
+  } else if (not status.IsNotFound()) {
+    IROHA_ERROR_IF_NOT_OK()
+  }
+
+  // check if not granted
+  IROHA_ERROR_IF_CONDITION(!granted_account_permissions.isSet(revoked_perm),
+                           2,
+                           command.toString(),
+                           "");
+
+  granted_account_permissions.unset(revoked_perm);
+
+  db_context_->value_buffer.assign(granted_account_permissions.toBitstring());
+  status = common.put(fmtstrings::kGranted,
+                      domain_id,
+                      account_name,
+                      grantee_domain_id,
+                      grantee_account_name);
+  IROHA_ERROR_IF_NOT_OK()
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::SetAccountDetail &command,
