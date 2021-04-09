@@ -106,6 +106,9 @@ namespace iroha::ametsuchi::fmtstrings {
   static auto constexpr kPathAccountRoles{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_ROLES)};
 
+  // domain_id/account_name
+  static auto constexpr kPathAccount{FMT_STRING(RDB_PATH_ACCOUNT)};
+
   // no params
   static auto constexpr kPathPeers{FMT_STRING(
       RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/ RDB_ADDRESS)};

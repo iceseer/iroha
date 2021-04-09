@@ -917,8 +917,46 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  RocksDbCommon common(db_context_);
+  rocksdb::Status status;
+  auto creator_names = splitId(creator_account_id);
+  auto &creator_account_name = creator_names.at(0);
+  auto &creator_domain_id = creator_names.at(1);
+
+  auto names = splitId(command.accountId());
+  auto &account_name = names.at(0);
+  auto &domain_id = names.at(1);
+
+  if (do_validation) {
+    // check if account exists
+    status = common.get(fmtstrings::kQuorum, domain_id, account_name);
+    IROHA_ERROR_IF_NOT_FOUND(3)
+
+    // and have permissions
+    IROHA_ERROR_IF_NOT_SET(Role::kSetQuorum)
+
+    GrantablePermissionSet granted_account_permissions;
+    status = common.get(fmtstrings::kGranted,
+                        creator_domain_id,
+                        creator_account_name,
+                        domain_id,
+                        account_name);
+    if (status.ok()) {
+      granted_account_permissions =
+          GrantablePermissionSet{db_context_->value_buffer};
+    } else if (not status.IsNotFound()) {
+      IROHA_ERROR_IF_NOT_OK()
+    }
+    IROHA_ERROR_IF_NOT_GRANTABLE_SET(Grantable::kSetMyQuorum)
+  }
+
+  common.encode(1);
+  status = common.put(fmtstrings::kQuorum, domain_id, account_name);
+  IROHA_ERROR_IF_NOT_OK()
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::SubtractAssetQuantity &command,
