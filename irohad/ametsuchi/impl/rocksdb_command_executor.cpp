@@ -965,7 +965,68 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+  RocksDbCommon common(db_context_);
+  rocksdb::Status status;
+
+  // TODO(iceseer): fix the case there will be no delimiter
+  auto creator_names = splitId(creator_account_id);
+  auto &creator_account_name = creator_names.at(0);
+  auto &creator_domain_id = creator_names.at(1);
+
+  auto names = splitId(command.assetId());
+  auto &asset_name = names.at(0);
+  auto &domain_id = names.at(1);
+  auto &amount = command.amount();
+
+  if (do_validation) {
+    IROHA_ERROR_IF_ANY_NOT_SET(Role::kSubtractAssetQty, Role::kSubtractDomainAssetQty)
+  }
+
+  // check if asset exists
+  status = common.get(fmtstrings::kAsset, domain_id, asset_name);
+  IROHA_ERROR_IF_NOT_FOUND(3)
+
+  uint64_t precision;
+  common.decode(precision);
+
+  status = common.get(fmtstrings::kAccountAsset,
+                      creator_domain_id,
+                      creator_account_name,
+                      command.assetId());
+  IROHA_ERROR_IF_NOT_OK()
+  shared_model::interface::Amount result = shared_model::interface::Amount(db_context_->value_buffer);
+
+  uint64_t account_asset_size = 0;
+  status = common.get(
+      fmtstrings::kAccountAssetSize, creator_domain_id, creator_account_name);
+  if (status.ok()) {
+    common.decode(account_asset_size);
+  } else if (not status.IsNotFound()) {
+    IROHA_ERROR_IF_NOT_OK()
+  }
+
+  result -= amount;
+  db_context_->value_buffer.assign(result.toStringRepr());
+  IROHA_ERROR_IF_CONDITION(
+      db_context_->value_buffer[0] == 'N', 4, command.toString(), "")
+
+  status = common.put(fmtstrings::kAccountAsset,
+                      creator_domain_id,
+                      creator_account_name,
+                      command.assetId());
+  IROHA_ERROR_IF_NOT_OK()
+
+  if (result == shared_model::interface::Amount("0")) {
+    --account_asset_size;
+
+    common.encode(account_asset_size);
+    status = common.put(
+        fmtstrings::kAccountAssetSize, creator_domain_id, creator_account_name);
+    IROHA_ERROR_IF_NOT_OK()
+  }
+
+  return {};
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::TransferAsset &command,
