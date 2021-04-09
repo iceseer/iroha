@@ -16,6 +16,7 @@
 #include <rocksdb/utilities/optimistic_transaction_db.h>
 #include <rocksdb/utilities/transaction.h>
 #include "interfaces/common_objects/types.hpp"
+#include "interfaces/permissions.hpp"
 
 // clang-format off
 /**
@@ -256,14 +257,20 @@ namespace iroha::ametsuchi {
     std::unique_ptr<rocksdb::OptimisticTransactionDB> transaction_db_;
   };
 
+  class IrohaDbError : public std::runtime_error {
+    uint32_t code_;
+
+   public:
+    IrohaDbError(uint32_t code, std::string const &msg)
+        : std::runtime_error(msg), code_{code} {}
+
+    uint32_t code() const {
+      return code_;
+    }
+  };
+
   template <typename Tx>
   class RocksDbCommon {
-    inline auto &valueBuffer() {
-      return tx_context_->value_buffer;
-    }
-    inline auto &keyBuffer() {
-      return tx_context_->key_buffer;
-    }
     inline auto &transaction() {
       return tx_context_->transaction;
     }
@@ -271,6 +278,14 @@ namespace iroha::ametsuchi {
    public:
     RocksDbCommon(Tx tx_context) : tx_context_(std::move(tx_context)) {
       assert(tx_context_);
+    }
+
+    inline auto &valueBuffer() {
+      return tx_context_->value_buffer;
+    }
+
+    inline auto &keyBuffer() {
+      return tx_context_->key_buffer;
     }
 
     auto encode(uint64_t number) {
@@ -328,17 +343,17 @@ namespace iroha::ametsuchi {
     }
 
     template <typename F, typename S, typename... Args>
-    bool enumerate(F &&func, S const &fmtstring, Args &&... args) {
+    auto enumerate(F &&func, S const &fmtstring, Args &&... args) {
       auto it = seek(fmtstring, std::forward<Args>(args)...);
       if (!it->status().ok())
-        return false;
+        return it->status();
 
       rocksdb::Slice const key(keyBuffer().data(), keyBuffer().size());
       for (; it->Valid() && it->key().starts_with(key); it->Next())
         if (!std::forward<F>(func)(it, key.size()))
           break;
 
-      return it->status().ok();
+      return it->status();
     }
 
    private:
@@ -377,6 +392,107 @@ namespace iroha::ametsuchi {
         },
         strformat,
         std::forward<Args>(args)...);
+  }
+
+  template <typename Common, typename F>
+  inline auto forAccount(Common &common,
+                         std::string_view domain,
+                         std::string_view account,
+                         F &&func) {
+    assert(!domain.empty());
+    assert(!account.empty());
+
+    auto status = common.get(fmtstrings::kQuorum, domain, account);
+    if (status.IsNotFound())
+      throw IrohaDbError(
+          1, fmt::format("Find account {}#{} was not found.", account, domain));
+    if (!status.ok())
+      throw IrohaDbError(
+          2,
+          fmt::format("Find account {}#{} failed with status: {}.",
+                      account,
+                      domain,
+                      status.ToString()));
+
+    return std::forward<F>(func)(common, domain, account);
+  }
+
+  template <typename Common, typename F>
+  inline auto forRole(Common &common,
+                         std::string_view role
+                         F &&func) {
+    assert(!role.empty());
+
+    status = common.get(fmtstrings::kRole, role);
+    if (!status.ok())
+      throw IrohaDbError(5,
+                         fmt::format("Get role {} failed with status: {}.",
+                                     role,
+                                     status.ToString()));
+
+
+
+
+    auto status = common.get(fmtstrings::kQuorum, domain, account);
+    if (status.IsNotFound())
+      throw IrohaDbError(
+          1, fmt::format("Find account {}#{} was not found.", account, domain));
+    if (!status.ok())
+      throw IrohaDbError(
+          2,
+          fmt::format("Find account {}#{} failed with status: {}.",
+                      account,
+                      domain,
+                      status.ToString()));
+
+    return std::forward<F>(func)(common, domain, account);
+  }
+
+  template <typename Common>
+  inline
+  shared_model::interface::RolePermissionSet accountPermissions(Common &common, std::string_view domain,
+                                                std::string_view account) {
+    assert(!domain.empty());
+    assert(!account.empty());
+
+    /// TODO(iceseer): remove this vector!
+    std::vector<std::string> roles;
+    auto status = enumerateKeys(
+        [&](auto role) {
+          if (!role.empty())
+            roles.emplace_back(role.ToStringView());
+          else {
+            assert(!"Role can not be empty string!");
+          }
+          return true;
+        },
+        fmtstrings::kPathAccountRoles,
+        domain,
+        account);
+
+    if (!status.ok())
+      throw IrohaDbError(
+          3,
+          fmt::format("Enumerate account {}#{} roles failed with status: {}.",
+                      account,
+                      domain,
+                      status.ToString()));
+
+    if (roles.empty())
+      throw IrohaDbError(
+          4, fmt::format("Account {}#{} have ho roles.", account, domain));
+
+    shared_model::interface::RolePermissionSet permissions;
+    for (auto &role : roles) {
+      status = common.get(fmtstrings::kRole, role);
+      if (!status.ok())
+        throw IrohaDbError(5,
+                           fmt::format("Get role {} failed with status: {}.",
+                                       role,
+                                       status.ToString()));
+      permissions |= shared_model::interface::RolePermissionSet{common.valueBuffer()};
+    }
+    return permissions;
   }
 
 }  // namespace iroha::ametsuchi

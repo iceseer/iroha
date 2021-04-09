@@ -256,12 +256,17 @@ CommandResult RocksDbCommandExecutor::execute(
           creator_permissions = std::move(permissions);
         }
 
-        return (*this)(command,
-                       creator_account_id,
-                       tx_hash,
-                       cmd_index,
-                       do_validation,
-                       creator_permissions);
+        try {
+          return (*this)(command,
+                         creator_account_id,
+                         tx_hash,
+                         cmd_index,
+                         do_validation,
+                         creator_permissions);
+        } catch (IrohaDbError &e) {
+          return expected::makeError(
+              CommandError{command.toString(), e.code(), e.what()});
+        }
       },
       cmd.get());
 }
