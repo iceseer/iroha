@@ -428,8 +428,8 @@ namespace iroha::ametsuchi {
     Tx tx_context_;
   };
 
-  enum struct kDbOperation { kGet = 0, kPut = 1 };
-  enum struct StatusCheck { kAll, kMustExist, kMustNotExist };
+  enum struct kDbOperation { kGet, kPut, kDel };
+  enum struct StatusCheck { kAll, kMustExist, kMustNotExist, kCanExist };
 
   template <typename Common, typename F, typename S, typename... Args>
   inline auto enumerateKeys(Common &rdb,
@@ -483,7 +483,7 @@ namespace iroha::ametsuchi {
   template <typename F>
   inline void mustExist(rocksdb::Status status, F &&op_formatter) {
     if (status.IsNotFound())
-      IrohaDbError(
+      throw IrohaDbError(
           14,
           fmt::format("{}. Was not found.", std::forward<F>(op_formatter)()));
 
@@ -492,6 +492,17 @@ namespace iroha::ametsuchi {
                          fmt::format("{}. Failed with status: {}.",
                                      std::forward<F>(op_formatter)(),
                                      status.ToString()));
+  }
+
+  template <typename F>
+  inline void canExist(rocksdb::Status status, F &&op_formatter) {
+    if (status.IsNotFound() || status.ok())
+      return;
+
+    throw IrohaDbError(18,
+                       fmt::format("{}. Failed with status: {}.",
+                                   std::forward<F>(op_formatter)(),
+                                   status.ToString()));
   }
 
   template <typename F>
@@ -504,6 +515,8 @@ namespace iroha::ametsuchi {
         return mustExist(status, std::forward<F>(op_formatter));
       case StatusCheck::kMustNotExist:
         return mustNotExist(status, std::forward<F>(op_formatter));
+      case StatusCheck::kCanExist:
+        return canExist(status, std::forward<F>(op_formatter));
     }
 
     assert(!"Unexpected operation value");
@@ -575,6 +588,67 @@ namespace iroha::ametsuchi {
   }
 
   template <typename Common, typename F>
+  inline auto forPeerAddress(Common &common,
+                             std::string_view pubkey,
+                             F &&func,
+                             kDbOperation op = kDbOperation::kGet,
+                             StatusCheck sc = StatusCheck::kAll) {
+    assert(!pubkey.empty());
+
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kPeerAddress, pubkey);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kPeerAddress, pubkey);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kPeerAddress, pubkey);
+      } break;
+    }
+
+    checkStatus(
+        status, sc, [&] { return fmt::format("Peer {} address", pubkey); });
+
+    std::optional<std::string> address;
+    if (op == kDbOperation::kGet && status.ok())
+      address = common.valueBuffer();
+
+    return std::forward<F>(func)(pubkey, address);
+  }
+
+  template <typename Common, typename F>
+  inline auto forPeerTLS(Common &common,
+                         std::string_view pubkey,
+                         F &&func,
+                         kDbOperation op = kDbOperation::kGet,
+                         StatusCheck sc = StatusCheck::kAll) {
+    assert(!pubkey.empty());
+
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kPeerTLS, pubkey);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kPeerTLS, pubkey);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kPeerTLS, pubkey);
+      } break;
+    }
+
+    checkStatus(status, sc, [&] { return fmt::format("Peer {} TLS", pubkey); });
+
+    std::optional<std::string> tls;
+    if (op == kDbOperation::kGet && status.ok())
+      tls = common.valueBuffer();
+
+    return std::forward<F>(func)(pubkey, tls);
+  }
+
+  template <typename Common, typename F>
   inline auto forAsset(Common &common,
                        std::string_view domain,
                        std::string_view asset,
@@ -613,14 +687,84 @@ namespace iroha::ametsuchi {
     assert(!account.empty());
     assert(!role.empty());
 
-    auto status = op == kDbOperation::kGet
-        ? common.get(fmtstrings::kAccountRole, domain, account, role)
-        : common.put(fmtstrings::kAccountRole, domain, account, role);
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kAccountRole, domain, account, role);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kAccountRole, domain, account, role);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kAccountRole, domain, account, role);
+      } break;
+    }
 
     checkStatus(status, sc, [&] {
       return fmt::format("Get account {}#{} role {}", account, domain, role);
     });
     return std::forward<F>(func)(account, domain, role);
+  }
+
+  template <typename Common, typename F>
+  inline auto forAccountDetail(Common &common,
+                               std::string_view domain,
+                               std::string_view account,
+                               std::string_view creator_domain,
+                               std::string_view creator_account,
+                               std::string_view key,
+                               F &&func,
+                               kDbOperation op = kDbOperation::kGet,
+                               StatusCheck sc = StatusCheck::kAll) {
+    assert(!domain.empty());
+    assert(!account.empty());
+    assert(!creator_domain.empty());
+    assert(!creator_account.empty());
+    assert(!key.empty());
+
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kAccountDetail,
+                            domain,
+                            account,
+                            creator_domain,
+                            creator_account,
+                            key);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kAccountDetail,
+                            domain,
+                            account,
+                            creator_domain,
+                            creator_account,
+                            key);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kAccountDetail,
+                            domain,
+                            account,
+                            creator_domain,
+                            creator_account,
+                            key);
+      } break;
+    }
+
+    checkStatus(status, sc, [&] {
+      return fmt::format("Account {}#{} detail for {}#{} with key {}",
+                         account,
+                         domain,
+                         creator_account,
+                         creator_domain,
+                         key);
+    });
+
+    std::optional<std::string> value;
+    if (op == kDbOperation::kGet && status.ok())
+      value = common.valueBuffer();
+
+    return std::forward<F>(func)(
+        account, domain, creator_account, creator_domain, key, value);
   }
 
   template <typename Common, typename F>
@@ -635,9 +779,18 @@ namespace iroha::ametsuchi {
     assert(!account.empty());
     assert(!pubkey.empty());
 
-    auto status = op == kDbOperation::kGet
-        ? common.get(fmtstrings::kSignatory, domain, account, pubkey)
-        : common.put(fmtstrings::kSignatory, domain, account, pubkey);
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kSignatory, domain, account, pubkey);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kSignatory, domain, account, pubkey);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kSignatory, domain, account, pubkey);
+      } break;
+    }
 
     checkStatus(status, sc, [&] {
       return fmt::format(
@@ -725,13 +878,13 @@ namespace iroha::ametsuchi {
                                       std::string_view grantee_domain,
                                       std::string_view grantee_account,
                                       F &&func,
-                                      kDbOperation op = kDbOperation::kGet) {
+                                      kDbOperation op = kDbOperation::kGet,
+                                      StatusCheck sc = StatusCheck::kCanExist) {
     assert(!domain.empty());
     assert(!account.empty());
     assert(!grantee_domain.empty());
     assert(!grantee_account.empty());
 
-    std::optional<shared_model::interface::GrantablePermissionSet> permissions;
     auto status = op == kDbOperation::kGet ? common.get(fmtstrings::kGranted,
                                                         domain,
                                                         account,
@@ -743,18 +896,19 @@ namespace iroha::ametsuchi {
                                                         grantee_domain,
                                                         grantee_account);
 
-    if (status.ok()) {
+    checkStatus(status, sc, [&] {
+      return fmt::format("Get account {}#{} grantable permissions for {}#{}",
+                         account,
+                         domain,
+                         grantee_account,
+                         grantee_domain);
+    });
+
+    std::optional<shared_model::interface::GrantablePermissionSet> permissions;
+    if (op == kDbOperation::kGet && status.ok())
       permissions =
           shared_model::interface::GrantablePermissionSet{common.valueBuffer()};
-    } else if (!status.IsNotFound()) {
-      checkStatus(status, [&] {
-        return fmt::format("Get account {}#{} grantable permissions for {}#{}",
-                           account,
-                           domain,
-                           grantee_account,
-                           grantee_domain);
-      });
-    }
+
     return std::forward<F>(func)(
         account, domain, grantee_account, grantee_domain, permissions);
   }
