@@ -186,8 +186,9 @@ CommandResult RocksDbCommandExecutor::operator()(
       forAsset(common,
                domain_id,
                asset_name,
-               [](auto /*asset*/, auto /*domain*/, auto precision) {
-                 return precision;
+               [](auto /*asset*/, auto /*domain*/, auto opt_precision) {
+                 assert(opt_precision);
+                 return *opt_precision;
                }));
 
   uint64_t account_asset_size(forAccountAssetSize(
@@ -453,7 +454,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                kDbOperation::kGet,
                StatusCheck::kMustNotExist);
 
-  common.valueBuffer().clear();
+  common.valueBuffer() = "";
   forSignatory(common,
                domain_id,
                account_name,
@@ -484,14 +485,18 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto &asset_name = command.assetName();
 
   if (do_validation) {
-    IROHA_ERROR_IF_NOT_SET(Role::kCreateAsset)
+    checkPermissions(creator_permissions, Role::kCreateAsset);
 
     // check if asset already exists
-    auto status = common.get(fmtstrings::kAsset, domain_id, asset_name);
-    IROHA_ERROR_IF_FOUND(3)
+    forAsset(common,
+             domain_id,
+             asset_name,
+             [](auto /*asset*/, auto /*domain*/, auto /*precision*/) {},
+             kDbOperation::kGet,
+             StatusCheck::kMustNotExist);
 
     // check if domain exists
-    status = common.get(fmtstrings::kDomain, domain_id);
+    auto status = common.get(fmtstrings::kDomain, domain_id);
     IROHA_ERROR_IF_NOT_FOUND(4)
   }
 

@@ -578,15 +578,25 @@ namespace iroha::ametsuchi {
   inline auto forAsset(Common &common,
                        std::string_view domain,
                        std::string_view asset,
-                       F &&func) {
+                       F &&func,
+                       kDbOperation op = kDbOperation::kGet,
+                       StatusCheck sc = StatusCheck::kAll) {
     assert(!domain.empty());
     assert(!asset.empty());
 
-    checkStatus(common.get(fmtstrings::kAsset, domain, asset),
-                [&] { return fmt::format("Find asset {}#{}", asset, domain); });
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kAsset, domain, asset)
+        : common.put(fmtstrings::kAsset, domain, asset);
 
-    uint64_t precision;
-    common.decode(precision);
+    checkStatus(
+        status, sc, [&] { return fmt::format("Asset {}#{}", asset, domain); });
+
+    std::optional<uint64_t> precision;
+    if (op == kDbOperation::kGet && status.ok()) {
+      uint64_t _;
+      common.decode(_);
+      precision = _;
+    }
 
     return std::forward<F>(func)(asset, domain, precision);
   }
