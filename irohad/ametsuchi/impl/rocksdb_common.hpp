@@ -169,7 +169,9 @@ namespace iroha::ametsuchi::fmtstrings {
       sizeof(RDB_DELIMITER) / sizeof(RDB_DELIMITER[0]) - 1ul;
 
   /**
-   * Paths
+   * ######################################
+   * ############## PATHS #################
+   * ######################################
    */
   // domain_id/account_name
   static auto constexpr kPathAccountRoles{
@@ -190,10 +192,11 @@ namespace iroha::ametsuchi::fmtstrings {
   static auto constexpr kPathRoles{
       FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_ROLES)};
 
-  // domain_id/account_name
-  static auto constexpr kQuorum{
-      FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_OPTIONS /**/ RDB_F_QUORUM)};
-
+  /**
+   * ######################################
+   * ############# FOLDERS ################
+   * ######################################
+   */
   // domain_id/account_name/role_name
   static auto constexpr kAccountRole{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_ROLES /**/ RDB_XXX)};
@@ -202,9 +205,6 @@ namespace iroha::ametsuchi::fmtstrings {
   static auto constexpr kRole{
       FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_ROLES /**/
                      RDB_XXX)};
-
-  // domain_id ➡️ default role
-  static auto constexpr kDomain{FMT_STRING(RDB_PATH_DOMAIN)};
 
   // domain_id/account_name/pubkey ➡️ ""
   static auto constexpr kSignatory{
@@ -217,10 +217,6 @@ namespace iroha::ametsuchi::fmtstrings {
   // account_domain_id/account_name/asset_id ➡️ amount
   static auto constexpr kAccountAsset{
       FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_ASSETS /**/ RDB_XXX)};
-
-  // account_domain_id/account_name ➡️ size
-  static auto constexpr kAccountAssetSize{
-      FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_OPTIONS /**/ RDB_F_ASSET_SIZE)};
 
   // domain_id/account_name/writer_domain_id/writer_account_name/key ➡️
   // value
@@ -238,13 +234,6 @@ namespace iroha::ametsuchi::fmtstrings {
       FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_NETWORK /**/ RDB_PEERS /**/
                      RDB_TLS /**/ RDB_XXX)};
 
-  // domain_id/account_name ➡️ permissions
-  // TODO(iceseer): Role is a Permission set, Account have role -> it determines
-  // Permissions for Account -> Delete a Role just drop Permissions for this
-  // Role.
-  /*static auto constexpr kPermissions{FMT_STRING(
-      "permissions/{}/{}")};  */
-
   // domain_id/account_name/grantee_domain_id/grantee_account_name
   // ➡️ permissions
   static auto constexpr kGranted{FMT_STRING(
@@ -253,6 +242,22 @@ namespace iroha::ametsuchi::fmtstrings {
   // key ➡️ value
   static auto constexpr kSetting{
       FMT_STRING(RDB_ROOT /**/ RDB_WSV /**/ RDB_SETTINGS /**/ RDB_XXX)};
+
+  /**
+   * ######################################
+   * ############## FILES #################
+   * ######################################
+   */
+  // domain_id ➡️ default role
+  static auto constexpr kDomain{FMT_STRING(RDB_PATH_DOMAIN)};
+
+  // domain_id/account_name
+  static auto constexpr kQuorum{
+      FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_OPTIONS /**/ RDB_F_QUORUM)};
+
+  // account_domain_id/account_name ➡️ size
+  static auto constexpr kAccountAssetSize{
+      FMT_STRING(RDB_PATH_ACCOUNT /**/ RDB_OPTIONS /**/ RDB_F_ASSET_SIZE)};
 }  // namespace iroha::ametsuchi::fmtstrings
 
 #undef RDB_ADDRESS
@@ -990,18 +995,18 @@ namespace iroha::ametsuchi {
 
     /// TODO(iceseer): remove this vector!
     std::vector<std::string> roles;
-    auto status = enumerateKeys(
-        [&](auto role) mutable {
-          if (!role.empty())
-            roles.emplace_back(role.ToStringView());
-          else {
-            assert(!"Role can not be empty string!");
-          }
-          return true;
-        },
-        fmtstrings::kPathAccountRoles,
-        domain,
-        account);
+    auto status = enumerateKeys(common,
+                                [&](auto role) {
+                                  if (!role.empty())
+                                    roles.emplace_back(role.ToStringView());
+                                  else {
+                                    assert(!"Role can not be empty string!");
+                                  }
+                                  return true;
+                                },
+                                fmtstrings::kPathAccountRoles,
+                                domain,
+                                account);
 
     if (!status.ok())
       throw IrohaDbError(

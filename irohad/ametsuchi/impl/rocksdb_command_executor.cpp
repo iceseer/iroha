@@ -43,68 +43,6 @@ using shared_model::interface::permissions::Role;
 using shared_model::interface::GrantablePermissionSet;
 using shared_model::interface::RolePermissionSet;
 
-#define IROHA_ERROR_IF_CONDITION(condition, code, command_name, error_extra)   \
-  if (condition) {                                                             \
-    return expected::makeError(CommandError{command_name, code, error_extra}); \
-  }
-
-#define IROHA_ERROR_NOT_IMPLEMENTED() \
-  IROHA_ERROR_IF_CONDITION(true, 100, command.toString(), "")
-
-#define IROHA_ERROR_IF_NOT_OK() \
-  IROHA_ERROR_IF_CONDITION(     \
-      not status.ok(), 1, command.toString(), status.ToString())
-
-#define IROHA_ERROR_IF_FOUND(code)                              \
-  IROHA_ERROR_IF_CONDITION(                                     \
-      status.ok(), code, command.toString(), status.ToString()) \
-  IROHA_ERROR_IF_CONDITION(                                     \
-      not status.IsNotFound(), code, command.toString(), status.ToString())
-
-#define IROHA_ERROR_IF_NOT_FOUND(code)                                  \
-  IROHA_ERROR_IF_CONDITION(                                             \
-      status.IsNotFound(), code, command.toString(), status.ToString()) \
-  IROHA_ERROR_IF_NOT_OK()
-
-#define IROHA_ERROR_IF_NOT_SUBSET()                         \
-  IROHA_ERROR_IF_CONDITION(                                 \
-      not role_permissions.isSubsetOf(creator_permissions), \
-      2,                                                    \
-      command.toString(),                                   \
-      "")
-
-#define IROHA_ERROR_IF_NOT_SET(elem) \
-  IROHA_ERROR_IF_CONDITION(          \
-      not creator_permissions.isSet(elem), 2, command.toString(), "")
-
-#define IROHA_ERROR_IF_NOT_ROLE_OR_GRANTABLE_SET(role, grantable) \
-  IROHA_ERROR_IF_CONDITION(                                       \
-      not(creator_permissions.isSet(role)                         \
-          or granted_account_permissions.isSet(grantable)),       \
-      2,                                                          \
-      command.toString(),                                         \
-      "")
-
-#define IROHA_ERROR_IF_NOT_GRANTABLE_SET(elem) \
-  IROHA_ERROR_IF_NOT_ROLE_OR_GRANTABLE_SET(Role::kRoot, elem)
-
-#define IROHA_ERROR_IF_ANY_NOT_SET(all, domain)                             \
-  IROHA_ERROR_IF_CONDITION(not((creator_permissions.isSet(all))             \
-                               or (domain_id == creator_domain_id           \
-                                   and creator_permissions.isSet(domain))), \
-                           2,                                               \
-                           command.toString(),                              \
-                           "")
-
-#define IROHA_CHECK_ERROR(name, value1)                                    \
-  decltype(value1)::ValueInnerType name;                                   \
-  if (auto result = (value1); result.which() == 1) {                       \
-    return expected::makeError(CommandError{result.assumeError()});        \
-  } else {                                                                 \
-    name = std::move(                                                      \
-        boost::get<decltype(result)::ValueType>(std::move(result)).value); \
-  }
-
 RocksDbCommandExecutor::RocksDbCommandExecutor(
     std::shared_ptr<RocksDBPort> db_port,
     std::shared_ptr<shared_model::interface::PermissionToString> perm_converter,
@@ -217,7 +155,7 @@ CommandResult RocksDbCommandExecutor::operator()(
   }
 
   result += amount;
-  db_context_->value_buffer.assign(result.toStringRepr());
+  common.valueBuffer().assign(result.toStringRepr());
   if (db_context_->value_buffer[0] == 'N')
     throw IrohaDbError(
         9, fmt::format("Invalid asset amount {}", result.toString()));
@@ -389,8 +327,9 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  throw IrohaDbError(26, fmt::format("Not implemented."));
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::CompareAndSetAccountDetail &command,
@@ -398,8 +337,9 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
-    IROHA_ERROR_NOT_IMPLEMENTED()}
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
+  throw IrohaDbError(26, fmt::format("Not implemented."));
+}
 
 CommandResult RocksDbCommandExecutor::operator()(
     const shared_model::interface::CreateAccount &command,
