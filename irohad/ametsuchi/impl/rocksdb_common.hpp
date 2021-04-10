@@ -21,6 +21,73 @@
 
 // clang-format off
 /**
+ * RocksDB data structure.
+ *
+ * |ROOT|-+-|STORE|-+-<height_1, value:block>
+ *        |         +-<height_2, value:block>
+ *        |         +-<height_3, value:block>
+ *        |
+ *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-|ADDRESS|-+-<peer_1_pubkey, value:address>
+ *                |           |         |           +-<peer_2_pubkey, value:address>
+ *                |           |         |
+ *                |           |         +-|TLS|-+-<peer_1, value:tls>
+ *                |           |                 +-<peer_2, value:tls>
+ *                |           |
+ *                |           +-|STORE|-+-<store height>
+ *                |                     +-<top block hash>
+ *                |                     +-<transactions count>
+ *                |
+ *                +-|SETTINGS|-+-<key_1, value_1>
+ *                |            +-<key_2, value_2>
+ *                |            +-<key_3, value_3>
+ *                |
+ *                +-|ROLES|-+-<role_1, value:permissions bitfield>
+ *                |         +-<role_2, value:permissions bitfield>
+ *                |         +-<role_3, value:permissions bitfield>
+ *                |
+ *                +-|TRANSACTIONS|-+-|ACCOUNTS|-+-<account_1>-+-|POSITION|-+-<height_index, value:tx_hash_1>
+ *                |                |            |             |            +-<height_index, value:tx_hash_2>
+ *                |                |            |             |            +-<height_index, value:tx_hash_3>
+ *                |                |            |             |
+ *                |                |            |             +-|TIMESTAMP|-+-<ts_1, value:tx_hash_1>
+ *                |                |            |                           +-<ts_2, value:tx_hash_2>
+ *                |                |            |                           +-<ts_3, value:tx_hash_3>
+ *                |                |            |
+ *                |                |            +-<account_2>-+-|POSITION|-+-<height_index, value:tx_hash_4>
+ *                |                |                          |            +-<height_index, value:tx_hash_5>
+ *                |                |                          |            +-<height_index, value:tx_hash_6>
+ *                |                |                          |
+ *                |                |                          +-|TIMESTAMP|-+-<ts_1, value:tx_hash_4>
+ *                |                |                                        +-<ts_2, value:tx_hash_5>
+ *                |                |                                        +-<ts_3, value:tx_hash_6>
+ *                |                |
+ *                |                +-|STATUSES|-+-<tx_hash_1, value:status_height_index>
+ *                |                             +-<tx_hash_2, value:status_height_index>
+ *                |
+ *                +-|DOMAIN|-+-|DOMAIN_1|-+-|ASSETS|-+-<asset_1, value:precision>
+ *                           |            |          +-<asset_2, value:precision>
+ *                           |            |
+ *                           |            +-|ACCOUNTS|-|NAME_1|-+-|ASSETS|-+-<asset_1, value:quantity>
+ *                           |                                  |          +-<asset_2, value:quantity>
+ *                           |                                  |
+ *                           |                                  +-|OPTIONS|-+-<quorum>
+ *                           |                                  |           +-<asset_size>
+ *                           |                                  |
+ *                           |                                  +-|DETAILS|-+-<domain>-<account>-<key>
+ *                           |                                  |
+ *                           |                                  +-|ROLES|-+-<role_1, value:flag>
+ *                           |                                  |         +-<role_2, value:flag>
+ *                           |                                  |
+ *                           |                                  +-|GRANTABLE_PER|-+-<domain_account_1, value:permissions>
+ *                           |                                  |                 +-<domain_account_2, value:permissions>
+ *                           |                                  |
+ *                           |                                  +-|SIGNATORIES|-+-<signatory_1>
+ *                           |                                                  +-<signatory_2>
+ *                           |
+ *                           +-<domain_1, value: default_role>
+ *
+ *
+ *
  * ######################################
  * ############# LEGEND MAP #############
  * ######################################
@@ -397,8 +464,8 @@ namespace iroha::ametsuchi {
         std::forward<Args>(args)...);
   }
 
-  void checkStatus(rocksdb::Status status,
-                   std::string_view operation_description) {
+  inline void checkStatus(rocksdb::Status status,
+                          std::string_view operation_description) {
     if (status.IsNotFound())
       throw IrohaDbError(
           1, fmt::format("{}. Was not found.", operation_description));
@@ -455,12 +522,16 @@ namespace iroha::ametsuchi {
   inline auto forAccountAssetSize(Common &common,
                                   std::string_view domain,
                                   std::string_view account,
-                                  F &&func) {
+                                  F &&func,
+                                  kDbOperation op = kDbOperation::kGet) {
     assert(!domain.empty());
     assert(!account.empty());
 
     uint64_t account_asset_size = 0ull;
-    auto status = common.get(fmtstrings::kAccountAssetSize, domain, account);
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kAccountAssetSize, domain, account)
+        : common.put(fmtstrings::kAccountAssetSize, domain, account);
+
     if (status.ok()) {
       common.decode(account_asset_size);
     } else if (not status.IsNotFound()) {

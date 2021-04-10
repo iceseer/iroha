@@ -43,75 +43,6 @@ using shared_model::interface::permissions::Role;
 using shared_model::interface::GrantablePermissionSet;
 using shared_model::interface::RolePermissionSet;
 
-// clang-format off
-/**
- * RocksDB data structure.
- *
- * |ROOT|-+-|STORE|-+-<height_1, value:block>
- *        |         +-<height_2, value:block>
- *        |         +-<height_3, value:block>
- *        |
- *        +-|WSV|-+-|NETWORK|-+-|PEERS|-+-|ADDRESS|-+-<peer_1_pubkey, value:address>
- *                |           |         |           +-<peer_2_pubkey, value:address>
- *                |           |         |
- *                |           |         +-|TLS|-+-<peer_1, value:tls>
- *                |           |                 +-<peer_2, value:tls>
- *                |           |
- *                |           +-|STORE|-+-<store height>
- *                |                     +-<top block hash>
- *                |                     +-<transactions count>
- *                |
- *                +-|SETTINGS|-+-<key_1, value_1>
- *                |            +-<key_2, value_2>
- *                |            +-<key_3, value_3>
- *                |
- *                +-|ROLES|-+-<role_1, value:permissions bitfield>
- *                |         +-<role_2, value:permissions bitfield>
- *                |         +-<role_3, value:permissions bitfield>
- *                |
- *                +-|TRANSACTIONS|-+-|ACCOUNTS|-+-<account_1>-+-|POSITION|-+-<height_index, value:tx_hash_1>
- *                |                |            |             |            +-<height_index, value:tx_hash_2>
- *                |                |            |             |            +-<height_index, value:tx_hash_3>
- *                |                |            |             |
- *                |                |            |             +-|TIMESTAMP|-+-<ts_1, value:tx_hash_1>
- *                |                |            |                           +-<ts_2, value:tx_hash_2>
- *                |                |            |                           +-<ts_3, value:tx_hash_3>
- *                |                |            |
- *                |                |            +-<account_2>-+-|POSITION|-+-<height_index, value:tx_hash_4>
- *                |                |                          |            +-<height_index, value:tx_hash_5>
- *                |                |                          |            +-<height_index, value:tx_hash_6>
- *                |                |                          |
- *                |                |                          +-|TIMESTAMP|-+-<ts_1, value:tx_hash_4>
- *                |                |                                        +-<ts_2, value:tx_hash_5>
- *                |                |                                        +-<ts_3, value:tx_hash_6>
- *                |                |
- *                |                +-|STATUSES|-+-<tx_hash_1, value:status_height_index>
- *                |                             +-<tx_hash_2, value:status_height_index>
- *                |
- *                +-|DOMAIN|-+-|DOMAIN_1|-+-|ASSETS|-+-<asset_1, value:precision>
- *                           |            |          +-<asset_2, value:precision>
- *                           |            |
- *                           |            +-|ACCOUNTS|-|NAME_1|-+-|ASSETS|-+-<asset_1, value:quantity>
- *                           |                                  |          +-<asset_2, value:quantity>
- *                           |                                  |
- *                           |                                  +-|OPTIONS|-+-<quorum>
- *                           |                                  |           +-<asset_size>
- *                           |                                  |
- *                           |                                  +-|DETAILS|-+-<domain>-<account>-<key>
- *                           |                                  |
- *                           |                                  +-|ROLES|-+-<role_1, value:flag>
- *                           |                                  |         +-<role_2, value:flag>
- *                           |                                  |
- *                           |                                  +-|GRANTABLE_PER|-+-<domain_account_1, value:permissions>
- *                           |                                  |                 +-<domain_account_2, value:permissions>
- *                           |                                  |
- *                           |                                  +-|SIGNATORIES|-+-<signatory_1>
- *                           |                                                  +-<signatory_2>
- *                           |
- *                           +-<domain_1, value: default_role>
- */
-// clang-format on
-
 #define IROHA_ERROR_IF_CONDITION(condition, code, command_name, error_extra)   \
   if (condition) {                                                             \
     return expected::makeError(CommandError{command_name, code, error_extra}); \
@@ -296,15 +227,16 @@ CommandResult RocksDbCommandExecutor::operator()(
                    [](auto /*account*/,
                       auto /*domain*/,
                       auto /*asset*/,
-                      auto /*opt_amount*/) {
-
-                   },
+                      auto /*opt_amount*/) {},
                    kDbOperation::kPut);
 
   common.encode(account_asset_size);
-  status = common.put(
-      fmtstrings::kAccountAssetSize, creator_domain_id, creator_account_name);
-  IROHA_ERROR_IF_NOT_OK()
+  forAccountAssetSize(
+      common,
+      creator_domain_id,
+      creator_account_name,
+      [](auto /*account*/, auto /*domain*/, uint64_t /*account_asset_size*/) {},
+      kDbOperation::kPut);
 
   return {};
 }
