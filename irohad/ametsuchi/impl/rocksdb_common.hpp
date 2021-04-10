@@ -429,6 +429,7 @@ namespace iroha::ametsuchi {
   };
 
   enum struct kDbOperation { kGet = 0, kPut = 1 };
+  enum struct StatusCheck { kAll, kMustExist, kMustNotExist };
 
   template <typename Common, typename F, typename S, typename... Args>
   inline auto enumerateKeys(Common &rdb,
@@ -464,16 +465,62 @@ namespace iroha::ametsuchi {
         std::forward<Args>(args)...);
   }
 
-  inline void checkStatus(rocksdb::Status status,
-                          std::string_view operation_description) {
+  template <typename F>
+  inline void checkStatus(rocksdb::Status status, F &&op_formatter) {
     if (status.IsNotFound())
       throw IrohaDbError(
-          1, fmt::format("{}. Was not found.", operation_description));
+          1,
+          fmt::format("{}. Was not found.", std::forward<F>(op_formatter)()));
+
     if (!status.ok())
       throw IrohaDbError(2,
                          fmt::format("{}. Failed with status: {}.",
-                                     operation_description,
+                                     std::forward<F>(op_formatter)(),
                                      status.ToString()));
+  }
+
+  template <typename F>
+  inline void mustNotExist(rocksdb::Status status, F &&op_formatter) {
+    if (status.IsNotFound())
+      return;
+
+    if (!status.ok())
+      throw IrohaDbError(12,
+                         fmt::format("{}. Failed with status: {}.",
+                                     std::forward<F>(op_formatter)(),
+                                     status.ToString()));
+
+    throw IrohaDbError(
+        13, fmt::format("{}. Exists.", std::forward<F>(op_formatter)()));
+  }
+
+  template <typename F>
+  inline void mustExist(rocksdb::Status status, F &&op_formatter) {
+    if (status.IsNotFound())
+      IrohaDbError(
+          14, fmt::format("{}. Not found.", std::forward<F>(op_formatter)()));
+
+    if (!status.ok())
+      throw IrohaDbError(15,
+                         fmt::format("{}. Failed with status: {}.",
+                                     std::forward<F>(op_formatter)(),
+                                     status.ToString()));
+  }
+
+  template <typename F>
+  inline void checkStatus(rocksdb::Status status,
+                          StatusCheck op,
+                          F &&op_formatter) {
+    switch (op) {
+      case StatusCheck::kAll:
+        return checkStatus(status, std::forward<F>(op_formatter));
+      case StatusCheck::kMustExist:
+        return mustExist(status, std::forward<F>(op_formatter));
+      case StatusCheck::kMustNotExist:
+        return mustNotExist(status, std::forward<F>(op_formatter));
+    }
+
+    assert(!"Unexpected operation value");
   }
 
   template <typename Common, typename F>
@@ -484,19 +531,25 @@ namespace iroha::ametsuchi {
     assert(!domain.empty());
     assert(!account.empty());
 
-    checkStatus(common.get(fmtstrings::kQuorum, domain, account),
-                fmt::format("Find account {}#{}", account, domain));
+    checkStatus(common.get(fmtstrings::kQuorum, domain, account), [&] {
+      return fmt::format("Find account {}#{}", account, domain);
+    });
 
     return std::forward<F>(func)(common, domain, account);
   }
 
   template <typename Common, typename F>
-  inline auto forRole(Common &common, std::string_view role, F &&func) {
+  inline auto forRole(Common &common,
+                      std::string_view role,
+                      F &&func,
+                      kDbOperation op = kDbOperation::kGet,
+                      StatusCheck sc = StatusCheck::kAll) {
     assert(!role.empty());
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kRole, role)
+        : common.put(fmtstrings::kRole, role);
 
-    checkStatus(common.get(fmtstrings::kRole, role),
-                fmt::format("Find role {}", role));
-
+    checkStatus(status, sc, [&] { return fmt::format("Find role {}", role); });
     return std::forward<F>(func)(
         role, shared_model::interface::RolePermissionSet{common.valueBuffer()});
   }
@@ -510,12 +563,34 @@ namespace iroha::ametsuchi {
     assert(!asset.empty());
 
     checkStatus(common.get(fmtstrings::kAsset, domain, asset),
-                fmt::format("Find asset {}#{}", asset, domain));
+                [&] { return fmt::format("Find asset {}#{}", asset, domain); });
 
     uint64_t precision;
     common.decode(precision);
 
     return std::forward<F>(func)(asset, domain, precision);
+  }
+
+  template <typename Common, typename F>
+  inline auto forAccountRole(Common &common,
+                             std::string_view domain,
+                             std::string_view account,
+                             std::string_view role,
+                             F &&func,
+                             kDbOperation op = kDbOperation::kGet,
+                             StatusCheck sc = StatusCheck::kAll) {
+    assert(!domain.empty());
+    assert(!account.empty());
+    assert(!role.empty());
+
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kAccountRole, domain, account, role)
+        : common.put(fmtstrings::kAccountRole, domain, account, role);
+
+    checkStatus(status, sc, [&] {
+      return fmt::format("Get account {}#{} role {}", account, domain, role);
+    });
+    return std::forward<F>(func)(account, domain, role);
   }
 
   template <typename Common, typename F>
@@ -535,8 +610,9 @@ namespace iroha::ametsuchi {
     if (status.ok()) {
       common.decode(account_asset_size);
     } else if (not status.IsNotFound()) {
-      checkStatus(status,
-                  fmt::format("Get account {}#{} asset size", account, domain));
+      checkStatus(status, [&] {
+        return fmt::format("Get account {}#{} asset size", account, domain);
+      });
     }
     return std::forward<F>(func)(account, domain, account_asset_size);
   }
@@ -560,11 +636,53 @@ namespace iroha::ametsuchi {
     if (status.ok()) {
       amount = shared_model::interface::Amount(common.valueBuffer());
     } else if (!status.IsNotFound()) {
-      checkStatus(
-          status,
-          fmt::format("Get account {}#{} assets {}", account, domain, asset));
+      checkStatus(status, [&] {
+        return fmt::format(
+            "Get account {}#{} assets {}", account, domain, asset);
+      });
     }
     return std::forward<F>(func)(account, domain, asset, amount);
+  }
+
+  template <typename Common, typename F>
+  inline auto forGrantablePermissions(Common &common,
+                                      std::string_view domain,
+                                      std::string_view account,
+                                      std::string_view grantee_domain,
+                                      std::string_view grantee_account,
+                                      F &&func,
+                                      kDbOperation op = kDbOperation::kGet) {
+    assert(!domain.empty());
+    assert(!account.empty());
+    assert(!grantee_domain.empty());
+    assert(!grantee_account.empty());
+
+    std::optional<shared_model::interface::GrantablePermissionSet> permissions;
+    auto status = op == kDbOperation::kGet ? common.get(fmtstrings::kGranted,
+                                                        domain,
+                                                        account,
+                                                        grantee_domain,
+                                                        grantee_account)
+                                           : common.put(fmtstrings::kGranted,
+                                                        domain,
+                                                        account,
+                                                        grantee_domain,
+                                                        grantee_account);
+
+    if (status.ok()) {
+      permissions =
+          shared_model::interface::GrantablePermissionSet{common.valueBuffer()};
+    } else if (!status.IsNotFound()) {
+      checkStatus(status, [&] {
+        return fmt::format("Get account {}#{} grantable permissions for {}#{}",
+                           account,
+                           domain,
+                           grantee_account,
+                           grantee_domain);
+      });
+    }
+    return std::forward<F>(func)(
+        account, domain, grantee_account, grantee_domain, permissions);
   }
 
   template <typename Common>
@@ -609,6 +727,15 @@ namespace iroha::ametsuchi {
   }
 
   inline void checkPermissions(
+      shared_model::interface::RolePermissionSet const &permissions,
+      shared_model::interface::permissions::Role const to_check) {
+    if (permissions.isSet(to_check))
+      return;
+
+    throw IrohaDbError(11, fmt::format("No permissions."));
+  }
+
+  inline void checkPermissions(
       std::string_view domain_id,
       std::string_view creator_domain_id,
       shared_model::interface::RolePermissionSet const &permissions,
@@ -621,6 +748,21 @@ namespace iroha::ametsuchi {
       return;
 
     throw IrohaDbError(7, fmt::format("No permissions."));
+  }
+
+  inline void checkPermissions(
+      shared_model::interface::RolePermissionSet const &permissions,
+      shared_model::interface::GrantablePermissionSet const
+          &grantable_permissions,
+      shared_model::interface::permissions::Role const role,
+      shared_model::interface::permissions::Grantable const granted) {
+    if (permissions.isSet(role))
+      return;
+
+    if (grantable_permissions.isSet(granted))
+      return;
+
+    throw IrohaDbError(14, fmt::format("No permissions."));
   }
 
 }  // namespace iroha::ametsuchi

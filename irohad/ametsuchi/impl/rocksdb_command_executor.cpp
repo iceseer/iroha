@@ -174,13 +174,12 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto &domain_id = names.at(1);
   auto &amount = command.amount();
 
-  if (do_validation) {
+  if (do_validation)
     checkPermissions(domain_id,
                      creator_domain_id,
                      creator_permissions,
                      Role::kAddAssetQty,
                      Role::kAddDomainAssetQty);
-  }
 
   // check if asset exists and construct amount by precision
   shared_model::interface::Amount result(
@@ -249,27 +248,31 @@ CommandResult RocksDbCommandExecutor::operator()(
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
   auto const peer = command.peer();
-  IROHA_ERROR_IF_CONDITION(!peer, 1002, command.toString(), "");
+  if (!peer)
+    throw IrohaDbError(10, fmt::format("No peer"));
 
   rocksdb::Status status;
   RocksDbCommon common(db_context_);
-  if (do_validation) {
-    IROHA_ERROR_IF_NOT_SET(Role::kAddPeer)
 
-    status = common.get(fmtstrings::kPeerAddress, peer->pubkey());
-    IROHA_ERROR_IF_FOUND(1)
-  }
+  if (do_validation)
+    checkPermissions(creator_permissions, Role::kAddPeer);
+
+  status = common.get(fmtstrings::kPeerAddress, peer->pubkey());
+  mustNotExist(status,
+               [&] { return fmt::format("Pubkey {}", peer->pubkey()); });
 
   /// Store address
   db_context_->value_buffer.assign(peer->address());
   status = common.put(fmtstrings::kPeerAddress, peer->pubkey());
-  IROHA_ERROR_IF_NOT_OK();
+  checkStatus(status, [&] { return fmt::format("Pubkey {}", peer->pubkey()); });
 
   /// Store TLS if present
   if (peer->tlsCertificate().has_value()) {
     db_context_->value_buffer.assign(peer->tlsCertificate().value());
     status = common.put(fmtstrings::kPeerTLS, peer->pubkey());
-    IROHA_ERROR_IF_NOT_OK();
+    checkStatus(status, [&] {
+      return fmt::format("TLS for pubkey {}", peer->pubkey());
+    });
   }
 
   return {};
@@ -298,26 +301,45 @@ CommandResult RocksDbCommandExecutor::operator()(
                         creator_account_name,
                         domain_id,
                         account_name);
-
-    GrantablePermissionSet granted_account_permissions;
-    if (status.ok()) {
-      granted_account_permissions =
-          GrantablePermissionSet{db_context_->value_buffer};
-    } else if (not status.IsNotFound()) {
-      IROHA_ERROR_IF_NOT_OK()
-    }
-
-    IROHA_ERROR_IF_NOT_ROLE_OR_GRANTABLE_SET(Role::kAddSignatory,
-                                             Grantable::kAddMySignatory)
-
-    status = common.get(
-        fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
-    IROHA_ERROR_IF_FOUND(2)
   }
+
+  GrantablePermissionSet granted_account_permissions;
+  if (auto opt_permissions = forGrantablePermissions(
+          common,
+          creator_domain_id,
+          creator_account_name,
+          domain_id,
+          account_name,
+          [](auto /*account*/,
+             auto /*domain*/,
+             auto /*grantee_account*/,
+             auto /*grantee_domain*/,
+             auto opt_permissions) { return opt_permissions; })) {
+    granted_account_permissions = std::move(*opt_permissions);
+  }
+
+  checkPermissions(creator_permissions,
+                   granted_account_permissions,
+                   Role::kAddSignatory,
+                   Grantable::kAddMySignatory);
+
+  status = common.get(
+      fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
+  mustNotExist(status, [&] {
+    return fmt::format("Signatory {} for account {}#{}",
+                       command.pubkey(),
+                       account_name,
+                       domain_id);
+  });
 
   status = common.put(
       fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
-  IROHA_ERROR_IF_NOT_OK()
+  checkStatus(status, [&] {
+    return fmt::format("Signatory {} for account {}#{}",
+                       command.pubkey(),
+                       account_name,
+                       domain_id);
+  });
 
   return {};
 }
@@ -336,27 +358,34 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto &domain_id = names.at(1);
   auto &role_name = command.roleName();
 
-  if (do_validation) {
-    IROHA_ERROR_IF_NOT_SET(Role::kAppendRole)
-  }
+  if (do_validation)
+    checkPermissions(creator_permissions, Role::kAppendRole);
 
-  rocksdb::Status status;
-  if (do_validation) {
-    // check if account already has role
-    status = common.get(
-        fmtstrings::kAccountRole, domain_id, account_name, role_name);
-    IROHA_ERROR_IF_FOUND(1)
+  // check if account already has role
+  forAccountRole(common,
+                 domain_id,
+                 account_name,
+                 role_name,
+                 [](auto, auto, auto) {},
+                 kDbOperation::kGet,
+                 StatusCheck::kMustNotExist);
 
-    status = common.get(fmtstrings::kRole, role_name);
-    IROHA_ERROR_IF_FOUND(2)
+  forRole(
+      common,
+      role_name,
+      [&](auto role, shared_model::interface::RolePermissionSet permissions) {
+        if (!permissions.isSubsetOf(creator_permissions))
+          IrohaDbError(16, fmt::format("Not enough permissions."));
+      },
+      kDbOperation::kGet,
+      StatusCheck::kMustExist);
 
-    RolePermissionSet role_permissions{db_context_->value_buffer};
-    IROHA_ERROR_IF_NOT_SUBSET()
-  }
-
-  status =
-      common.put(fmtstrings::kAccountRole, domain_id, account_name, role_name);
-  IROHA_ERROR_IF_NOT_OK()
+  forAccountRole(common,
+                 domain_id,
+                 account_name,
+                 role_name,
+                 [](auto, auto, auto) {},
+                 kDbOperation::kPut);
 
   return {};
 }
