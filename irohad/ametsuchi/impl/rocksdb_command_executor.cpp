@@ -186,54 +186,6 @@ RocksDbCommandExecutor::RocksDbCommandExecutor(
 
 RocksDbCommandExecutor::~RocksDbCommandExecutor() = default;
 
-expected::Result<RolePermissionSet, CommandError>
-RocksDbCommandExecutor::getAccountPermissions(std::string_view domain,
-                                              std::string_view account) {
-  assert(!domain.empty());
-  assert(!account.empty());
-
-  /// TODO(iceseer): remove this vector!
-  std::vector<std::string> roles;
-  RocksDbCommon common(db_context_);
-
-  common.enumerate(
-      [&](std::unique_ptr<rocksdb::Iterator> const &it,
-          size_t const prefix_size) {
-        if (!it->status().ok())
-          return false;
-        auto const key = it->key().ToStringView();
-
-        auto const role = key.substr(
-            prefix_size + fmtstrings::kDelimiterSize,
-            key.size() - prefix_size - 2ul * fmtstrings::kDelimiterSize);
-
-        if (!role.empty())
-          roles.emplace_back(role);
-        else {
-          assert(!"Role can not be empty string!");
-        }
-        return true;
-      },
-      fmtstrings::kPathAccountRoles,
-      domain,
-      account);
-
-  auto cmd = [&]() {
-    return fmt::format(fmtstrings::kPathAccountRoles, domain, account);
-  };
-
-  IROHA_ERROR_IF_CONDITION(roles.empty(), 1001, cmd(), "");
-  RolePermissionSet permissions;
-
-  for (auto &role : roles) {
-    auto status = common.get(fmtstrings::kRole, role);
-    IROHA_ERROR_IF_CONDITION(!status.ok(), 1002, cmd(), "");
-
-    permissions |= RolePermissionSet{db_context_->value_buffer};
-  }
-  return permissions;
-}
-
 CommandResult RocksDbCommandExecutor::execute(
     const shared_model::interface::Command &cmd,
     const shared_model::interface::types::AccountIdType &creator_account_id,
@@ -243,20 +195,20 @@ CommandResult RocksDbCommandExecutor::execute(
   return boost::apply_visitor(
       [this, &creator_account_id, &tx_hash, cmd_index, do_validation](
           const auto &command) -> CommandResult {
-        RolePermissionSet creator_permissions;
-
-        if (do_validation) {
-          auto names = splitId(creator_account_id);
-          auto &account_name = names.at(0);
-          auto &domain_id = names.at(1);
-
-          // get account permissions
-          auto r = getAccountPermissions(domain_id, account_name);
-          IROHA_CHECK_ERROR(permissions, r);
-          creator_permissions = std::move(permissions);
-        }
-
         try {
+          RocksDbCommon common(db_context_);
+
+          RolePermissionSet creator_permissions;
+          if (do_validation) {
+            auto names = splitId(creator_account_id);
+            auto &account_name = names.at(0);
+            auto &domain_id = names.at(1);
+
+            // get account permissions
+            creator_permissions =
+                accountPermissions(common, domain_id, account_name);
+          }
+
           return (*this)(command,
                          creator_account_id,
                          tx_hash,
@@ -291,52 +243,63 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto &domain_id = names.at(1);
   auto &amount = command.amount();
 
-  shared_model::interface::Amount result("");
-
   if (do_validation) {
-    IROHA_ERROR_IF_ANY_NOT_SET(Role::kAddAssetQty, Role::kAddDomainAssetQty)
+    checkPermissions(domain_id,
+                     creator_domain_id,
+                     creator_permissions,
+                     Role::kAddAssetQty,
+                     Role::kAddDomainAssetQty);
   }
 
-  // check if asset exists
-  status = common.get(fmtstrings::kAsset, domain_id, asset_name);
-  IROHA_ERROR_IF_NOT_FOUND(3)
+  // check if asset exists and construct amount by precision
+  shared_model::interface::Amount result(
+      forAsset(common,
+               domain_id,
+               asset_name,
+               [](auto /*asset*/, auto /*domain*/, auto precision) {
+                 return precision;
+               }));
 
-  uint64_t precision;
-  common.decode(precision);
-  result = shared_model::interface::Amount(precision);
+  uint64_t account_asset_size(forAccountAssetSize(
+      common,
+      creator_domain_id,
+      creator_account_name,
+      [](auto /*account*/, auto /*domain*/, uint64_t account_asset_size) {
+        return account_asset_size;
+      }));
 
-  uint64_t account_asset_size = 0;
-  status = common.get(
-      fmtstrings::kAccountAssetSize, creator_domain_id, creator_account_name);
-  if (status.ok()) {
-    common.decode(account_asset_size);
-  } else if (not status.IsNotFound()) {
-    IROHA_ERROR_IF_NOT_OK()
-  }
-
-  status = common.get(fmtstrings::kAccountAsset,
-                      creator_domain_id,
-                      creator_account_name,
-                      command.assetId());
-
-  if (status.ok()) {
-    result = shared_model::interface::Amount(db_context_->value_buffer);
-  } else if (status.IsNotFound()) {
-    ++account_asset_size;
-  } else {
-    IROHA_ERROR_IF_NOT_OK()
+  {  // get account asset balance
+    auto opt_account_assets(forAccountAssets(
+        common,
+        creator_domain_id,
+        creator_account_name,
+        command.assetId(),
+        [](auto /*account*/, auto /*domain*/, auto /*asset*/, auto opt_amount) {
+          return opt_amount;
+        }));
+    if (!opt_account_assets)
+      ++account_asset_size;
+    else
+      result = std::move(*opt_account_assets);
   }
 
   result += amount;
   db_context_->value_buffer.assign(result.toStringRepr());
-  IROHA_ERROR_IF_CONDITION(
-      db_context_->value_buffer[0] == 'N', 4, command.toString(), "")
+  if (db_context_->value_buffer[0] == 'N')
+    throw IrohaDbError(
+        9, fmt::format("Invalid asset amount {}", result.toString()));
 
-  status = common.put(fmtstrings::kAccountAsset,
-                      creator_domain_id,
-                      creator_account_name,
-                      command.assetId());
-  IROHA_ERROR_IF_NOT_OK()
+  forAccountAssets(common,
+                   creator_domain_id,
+                   creator_account_name,
+                   command.assetId(),
+                   [](auto /*account*/,
+                      auto /*domain*/,
+                      auto /*asset*/,
+                      auto /*opt_amount*/) {
+
+                   },
+                   kDbOperation::kPut);
 
   common.encode(account_asset_size);
   status = common.put(
@@ -969,7 +932,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     const std::string &tx_hash,
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
-    shared_model::interface::RolePermissionSet const &creator_permissions){
+    shared_model::interface::RolePermissionSet const &creator_permissions) {
   RocksDbCommon common(db_context_);
   rocksdb::Status status;
 
@@ -984,7 +947,8 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto &amount = command.amount();
 
   if (do_validation) {
-    IROHA_ERROR_IF_ANY_NOT_SET(Role::kSubtractAssetQty, Role::kSubtractDomainAssetQty)
+    IROHA_ERROR_IF_ANY_NOT_SET(Role::kSubtractAssetQty,
+                               Role::kSubtractDomainAssetQty)
   }
 
   // check if asset exists
@@ -999,7 +963,8 @@ CommandResult RocksDbCommandExecutor::operator()(
                       creator_account_name,
                       command.assetId());
   IROHA_ERROR_IF_NOT_OK()
-  shared_model::interface::Amount result = shared_model::interface::Amount(db_context_->value_buffer);
+  shared_model::interface::Amount result =
+      shared_model::interface::Amount(db_context_->value_buffer);
 
   uint64_t account_asset_size = 0;
   status = common.get(

@@ -223,11 +223,6 @@ namespace iroha::ametsuchi {
         shared_model::interface::RolePermissionSet const &creator_permissions);
 
    private:
-    inline expected::Result<shared_model::interface::RolePermissionSet,
-                            CommandError>
-    getAccountPermissions(std::string_view domain, std::string_view account);
-
-   private:
     std::shared_ptr<RocksDBPort> db_port_;
     std::shared_ptr<RocksDBContext> db_context_;
     std::shared_ptr<shared_model::interface::PermissionToString>
