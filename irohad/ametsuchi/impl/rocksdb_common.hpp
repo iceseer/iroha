@@ -437,9 +437,10 @@ namespace iroha::ametsuchi {
                             S const &strformat,
                             Args &&... args) {
     return rdb.enumerate(
-        [func{std::forward<F>(func)}](auto const &it, auto const prefix_size) {
+        [func{std::forward<F>(func)}](auto const &it,
+                                      auto const prefix_size) mutable {
           auto const key = it->key();
-          return func(rocksdb::Slice(
+          return std::forward<F>(func)(rocksdb::Slice(
               key.data() + prefix_size + fmtstrings::kDelimiterSize,
               key.size() - prefix_size - 2ull * fmtstrings::kDelimiterSize));
         },
@@ -536,6 +537,10 @@ namespace iroha::ametsuchi {
         ? common.get(fmtstrings::kQuorum, domain, account)
         : common.put(fmtstrings::kQuorum, domain, account);
 
+    checkStatus(status, sc, [&] {
+      return fmt::format("Account {}#{}", account, domain);
+    });
+
     std::optional<uint64_t> quorum;
     if (op == kDbOperation::kGet && status.ok()) {
       uint64_t _;
@@ -543,10 +548,7 @@ namespace iroha::ametsuchi {
       quorum = _;
     }
 
-    checkStatus(status, sc, [&] {
-      return fmt::format("Account {}#{}", account, domain);
-    });
-    return std::forward<F>(func)(account, domain, quorum);
+    return std::forward<F>(func)(account, domain, std::move(quorum));
   }
 
   template <typename Common, typename F>
@@ -584,7 +586,35 @@ namespace iroha::ametsuchi {
     if (op == kDbOperation::kGet && status.ok())
       perm = shared_model::interface::RolePermissionSet{common.valueBuffer()};
 
-    return std::forward<F>(func)(role, perm);
+    return std::forward<F>(func)(role, std::move(perm));
+  }
+
+  template <typename Common, typename F>
+  inline auto forSettings(Common &common,
+                          std::string_view key,
+                          F &&func,
+                          kDbOperation op = kDbOperation::kGet,
+                          StatusCheck sc = StatusCheck::kAll) {
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kSetting, key);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kSetting, key);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kSetting, key);
+      } break;
+    }
+
+    checkStatus(status, sc, [&] { return fmt::format("Setting {}", key); });
+
+    std::optional<std::string> value;
+    if (op == kDbOperation::kGet && status.ok())
+      value = common.valueBuffer();
+
+    return std::forward<F>(func)(key, std::move(value));
   }
 
   template <typename Common, typename F>
@@ -615,7 +645,7 @@ namespace iroha::ametsuchi {
     if (op == kDbOperation::kGet && status.ok())
       address = common.valueBuffer();
 
-    return std::forward<F>(func)(pubkey, address);
+    return std::forward<F>(func)(pubkey, std::move(address));
   }
 
   template <typename Common, typename F>
@@ -645,7 +675,7 @@ namespace iroha::ametsuchi {
     if (op == kDbOperation::kGet && status.ok())
       tls = common.valueBuffer();
 
-    return std::forward<F>(func)(pubkey, tls);
+    return std::forward<F>(func)(pubkey, std::move(tls));
   }
 
   template <typename Common, typename F>
@@ -658,9 +688,18 @@ namespace iroha::ametsuchi {
     assert(!domain.empty());
     assert(!asset.empty());
 
-    auto status = op == kDbOperation::kGet
-        ? common.get(fmtstrings::kAsset, domain, asset)
-        : common.put(fmtstrings::kAsset, domain, asset);
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kAsset, domain, asset);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kAsset, domain, asset);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kAsset, domain, asset);
+      } break;
+    }
 
     checkStatus(
         status, sc, [&] { return fmt::format("Asset {}#{}", asset, domain); });
@@ -672,7 +711,7 @@ namespace iroha::ametsuchi {
       precision = _;
     }
 
-    return std::forward<F>(func)(asset, domain, precision);
+    return std::forward<F>(func)(asset, domain, std::move(precision));
   }
 
   template <typename Common, typename F>
@@ -703,6 +742,7 @@ namespace iroha::ametsuchi {
     checkStatus(status, sc, [&] {
       return fmt::format("Get account {}#{} role {}", account, domain, role);
     });
+
     return std::forward<F>(func)(account, domain, role);
   }
 
@@ -763,8 +803,12 @@ namespace iroha::ametsuchi {
     if (op == kDbOperation::kGet && status.ok())
       value = common.valueBuffer();
 
-    return std::forward<F>(func)(
-        account, domain, creator_account, creator_domain, key, value);
+    return std::forward<F>(func)(account,
+                                 domain,
+                                 creator_account,
+                                 creator_domain,
+                                 key,
+                                 std::move(value));
   }
 
   template <typename Common, typename F>
@@ -817,7 +861,7 @@ namespace iroha::ametsuchi {
     if (op == kDbOperation::kGet && status.ok())
       default_role = common.valueBuffer();
 
-    return std::forward<F>(func)(domain, default_role);
+    return std::forward<F>(func)(domain, std::move(default_role));
   }
 
   template <typename Common, typename F>
@@ -825,23 +869,36 @@ namespace iroha::ametsuchi {
                                   std::string_view domain,
                                   std::string_view account,
                                   F &&func,
-                                  kDbOperation op = kDbOperation::kGet) {
+                                  kDbOperation op = kDbOperation::kGet,
+                                  StatusCheck sc = StatusCheck::kCanExist) {
     assert(!domain.empty());
     assert(!account.empty());
 
-    uint64_t account_asset_size = 0ull;
-    auto status = op == kDbOperation::kGet
-        ? common.get(fmtstrings::kAccountAssetSize, domain, account)
-        : common.put(fmtstrings::kAccountAssetSize, domain, account);
-
-    if (status.ok()) {
-      common.decode(account_asset_size);
-    } else if (not status.IsNotFound()) {
-      checkStatus(status, [&] {
-        return fmt::format("Get account {}#{} asset size", account, domain);
-      });
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kAccountAssetSize, domain, account);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kAccountAssetSize, domain, account);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kAccountAssetSize, domain, account);
+      } break;
     }
-    return std::forward<F>(func)(account, domain, account_asset_size);
+
+    checkStatus(status, sc, [&] {
+      return fmt::format("Account {}#{} asset size", account, domain);
+    });
+
+    std::optional<uint64_t> account_asset_size;
+    if (op == kDbOperation::kGet && status.ok()) {
+      uint64_t _;
+      common.decode(_);
+      account_asset_size = _;
+    }
+    return std::forward<F>(func)(
+        account, domain, std::move(account_asset_size));
   }
 
   template <typename Common, typename F>
@@ -850,25 +907,34 @@ namespace iroha::ametsuchi {
                                std::string_view account,
                                std::string_view asset,
                                F &&func,
-                               kDbOperation op = kDbOperation::kGet) {
+                               kDbOperation op = kDbOperation::kGet,
+                               StatusCheck sc = StatusCheck::kCanExist) {
     assert(!domain.empty());
     assert(!account.empty());
     assert(!asset.empty());
 
-    std::optional<shared_model::interface::Amount> amount;
-    auto status = op == kDbOperation::kGet
-        ? common.get(fmtstrings::kAccountAsset, domain, account, asset)
-        : common.put(fmtstrings::kAccountAsset, domain, account, asset);
-
-    if (status.ok()) {
-      amount = shared_model::interface::Amount(common.valueBuffer());
-    } else if (!status.IsNotFound()) {
-      checkStatus(status, [&] {
-        return fmt::format(
-            "Get account {}#{} assets {}", account, domain, asset);
-      });
+    rocksdb::Status status;
+    switch (op) {
+      case kDbOperation::kGet: {
+        status = common.get(fmtstrings::kAccountAsset, domain, account, asset);
+      } break;
+      case kDbOperation::kPut: {
+        status = common.put(fmtstrings::kAccountAsset, domain, account, asset);
+      } break;
+      case kDbOperation::kDel: {
+        status = common.del(fmtstrings::kAccountAsset, domain, account, asset);
+      } break;
     }
-    return std::forward<F>(func)(account, domain, asset, amount);
+
+    checkStatus(status, sc, [&] {
+      return fmt::format("Account {}#{} assets {}", account, domain, asset);
+    });
+
+    std::optional<shared_model::interface::Amount> amount;
+    if (op == kDbOperation::kGet && status.ok())
+      amount = shared_model::interface::Amount(common.valueBuffer());
+
+    return std::forward<F>(func)(account, domain, asset, std::move(amount));
   }
 
   template <typename Common, typename F>
@@ -909,8 +975,11 @@ namespace iroha::ametsuchi {
       permissions =
           shared_model::interface::GrantablePermissionSet{common.valueBuffer()};
 
-    return std::forward<F>(func)(
-        account, domain, grantee_account, grantee_domain, permissions);
+    return std::forward<F>(func)(account,
+                                 domain,
+                                 grantee_account,
+                                 grantee_domain,
+                                 std::move(permissions));
   }
 
   template <typename Common>
@@ -922,7 +991,7 @@ namespace iroha::ametsuchi {
     /// TODO(iceseer): remove this vector!
     std::vector<std::string> roles;
     auto status = enumerateKeys(
-        [&](auto role) {
+        [&](auto role) mutable {
           if (!role.empty())
             roles.emplace_back(role.ToStringView());
           else {

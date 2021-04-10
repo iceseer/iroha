@@ -195,8 +195,10 @@ CommandResult RocksDbCommandExecutor::operator()(
       common,
       creator_domain_id,
       creator_account_name,
-      [](auto /*account*/, auto /*domain*/, uint64_t account_asset_size) {
-        return account_asset_size;
+      [](auto /*account*/, auto /*domain*/, auto opt_account_asset_size) {
+        if (opt_account_asset_size)
+          return *opt_account_asset_size;
+        return uint64_t(0ull);
       }));
 
   {  // get account asset balance
@@ -235,7 +237,7 @@ CommandResult RocksDbCommandExecutor::operator()(
       common,
       creator_domain_id,
       creator_account_name,
-      [](auto /*account*/, auto /*domain*/, uint64_t /*account_asset_size*/) {},
+      [](auto /*account*/, auto /*domain*/, auto /*opt_account_asset_size*/) {},
       kDbOperation::kPut);
 
   return {};
@@ -265,15 +267,14 @@ CommandResult RocksDbCommandExecutor::operator()(
   /// Store address
   db_context_->value_buffer.assign(peer->address());
   status = common.put(fmtstrings::kPeerAddress, peer->pubkey());
-  checkStatus(status, [&] { return fmt::format("Pubkey {}", peer->pubkey()); });
+  mustExist(status, [&] { return fmt::format("Pubkey {}", peer->pubkey()); });
 
   /// Store TLS if present
   if (peer->tlsCertificate().has_value()) {
     db_context_->value_buffer.assign(peer->tlsCertificate().value());
     status = common.put(fmtstrings::kPeerTLS, peer->pubkey());
-    checkStatus(status, [&] {
-      return fmt::format("TLS for pubkey {}", peer->pubkey());
-    });
+    mustExist(status,
+              [&] { return fmt::format("TLS for pubkey {}", peer->pubkey()); });
   }
 
   return {};
@@ -995,9 +996,6 @@ CommandResult RocksDbCommandExecutor::operator()(
     shared_model::interface::types::CommandIndexType cmd_index,
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
-  RocksDbCommon common(db_context_);
-  rocksdb::Status status;
-
   // TODO(iceseer): fix the case there will be no delimiter
   auto creator_names = splitId(creator_account_id);
   auto &creator_account_name = creator_names.at(0);
@@ -1008,53 +1006,74 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto &domain_id = names.at(1);
   auto &amount = command.amount();
 
-  if (do_validation) {
-    IROHA_ERROR_IF_ANY_NOT_SET(Role::kSubtractAssetQty,
-                               Role::kSubtractDomainAssetQty)
-  }
+  RocksDbCommon common(db_context_);
+  if (do_validation)
+    checkPermissions(domain_id,
+                     creator_domain_id,
+                     creator_permissions,
+                     Role::kSubtractAssetQty,
+                     Role::kSubtractDomainAssetQty);
 
   // check if asset exists
-  status = common.get(fmtstrings::kAsset, domain_id, asset_name);
-  IROHA_ERROR_IF_NOT_FOUND(3)
+  shared_model::interface::Amount result(
+      forAsset(common,
+               domain_id,
+               asset_name,
+               [](auto /*asset*/, auto /*domain*/, auto opt_precision) {
+                 assert(opt_precision);
+                 return *opt_precision;
+               }));
 
-  uint64_t precision;
-  common.decode(precision);
-
-  status = common.get(fmtstrings::kAccountAsset,
-                      creator_domain_id,
-                      creator_account_name,
-                      command.assetId());
-  IROHA_ERROR_IF_NOT_OK()
-  shared_model::interface::Amount result =
-      shared_model::interface::Amount(db_context_->value_buffer);
-
-  uint64_t account_asset_size = 0;
-  status = common.get(
-      fmtstrings::kAccountAssetSize, creator_domain_id, creator_account_name);
-  if (status.ok()) {
-    common.decode(account_asset_size);
-  } else if (not status.IsNotFound()) {
-    IROHA_ERROR_IF_NOT_OK()
+  if (auto opt_amount =
+          forAccountAssets(common,
+                           creator_domain_id,
+                           creator_account_name,
+                           command.assetId(),
+                           [](auto /*account*/,
+                              auto /*domain*/,
+                              auto /*asset*/,
+                              auto opt_amount) { return opt_amount; },
+                           kDbOperation::kGet,
+                           StatusCheck::kCanExist)) {
+    result = std::move(*opt_amount);
   }
 
-  result -= amount;
-  db_context_->value_buffer.assign(result.toStringRepr());
-  IROHA_ERROR_IF_CONDITION(
-      db_context_->value_buffer[0] == 'N', 4, command.toString(), "")
+  uint64_t account_asset_size(forAccountAssetSize(
+      common,
+      creator_domain_id,
+      creator_account_name,
+      [](auto /*account*/, auto /*domain*/, auto opt_account_asset_size) {
+        if (opt_account_asset_size)
+          return *opt_account_asset_size;
+        return uint64_t(0ull);
+      }));
 
-  status = common.put(fmtstrings::kAccountAsset,
-                      creator_domain_id,
-                      creator_account_name,
-                      command.assetId());
-  IROHA_ERROR_IF_NOT_OK()
+  result -= amount;
+  common.valueBuffer().assign(result.toStringRepr());
+  if (db_context_->value_buffer[0] == 'N')
+    throw IrohaDbError(21, fmt::format("Invalid result"));
+
+  forAccountAssets(common,
+                   creator_domain_id,
+                   creator_account_name,
+                   command.assetId(),
+                   [](auto /*account*/,
+                      auto /*domain*/,
+                      auto /*asset*/,
+                      auto /*opt_amount*/) {},
+                   kDbOperation::kPut);
 
   if (result == shared_model::interface::Amount("0")) {
     --account_asset_size;
 
     common.encode(account_asset_size);
-    status = common.put(
-        fmtstrings::kAccountAssetSize, creator_domain_id, creator_account_name);
-    IROHA_ERROR_IF_NOT_OK()
+    forAccountAssetSize(
+        common,
+        creator_domain_id,
+        creator_account_name,
+        [](auto /*account*/, auto /*domain*/, auto /*opt_account_asset_size*/) {
+        },
+        kDbOperation::kPut);
   }
 
   return {};
@@ -1068,7 +1087,6 @@ CommandResult RocksDbCommandExecutor::operator()(
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
   RocksDbCommon common(db_context_);
-  rocksdb::Status status;
   auto creator_names = splitId(creator_account_id);
   auto &creator_account_name = creator_names.at(0);
   auto &creator_domain_id = creator_names.at(1);
@@ -1089,117 +1107,146 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   if (do_validation) {
     // check if destination account exists
-    status = common.get(
-        fmtstrings::kQuorum, destination_domain_id, destination_account_name);
-    IROHA_ERROR_IF_NOT_FOUND(4)
+    forAccount(common,
+               destination_domain_id,
+               destination_account_name,
+               [](auto /*account*/, auto /*domain*/) {},
+               kDbOperation::kGet,
+               StatusCheck::kMustExist);
 
     // get account permissions
-    auto r =
-        getAccountPermissions(destination_domain_id, destination_account_name);
-    IROHA_CHECK_ERROR(destination_permissions, r);
-    IROHA_ERROR_IF_CONDITION(not destination_permissions.isSet(Role::kReceive),
-                             2,
-                             command.toString(),
-                             "")
+    auto destination_permissions = accountPermissions(
+        common, destination_domain_id, destination_account_name);
+    if (!destination_permissions.isSet(Role::kReceive))
+      throw IrohaDbError(22, fmt::format("Not enough permissions"));
 
     if (command.srcAccountId() != creator_account_id) {
       // check if source account exists
-      status = common.get(
-          fmtstrings::kQuorum, source_domain_id, source_account_name);
-      IROHA_ERROR_IF_NOT_FOUND(3)
+      forAccount(common,
+                 source_domain_id,
+                 source_account_name,
+                 [](auto /*account*/, auto /*domain*/) {},
+                 kDbOperation::kGet,
+                 StatusCheck::kMustExist);
 
       GrantablePermissionSet granted_account_permissions;
-      auto status = common.get(fmtstrings::kGranted,
-                               creator_domain_id,
-                               creator_account_name,
-                               source_domain_id,
-                               source_account_name);
-      if (status.ok()) {
-        granted_account_permissions =
-            GrantablePermissionSet{db_context_->value_buffer};
-      } else if (not status.IsNotFound()) {
-        IROHA_ERROR_IF_NOT_OK()
+      if (auto opt_permissions = forGrantablePermissions(
+              common,
+              creator_domain_id,
+              creator_account_name,
+              source_domain_id,
+              source_account_name,
+              [](auto /*account*/,
+                 auto /*domain*/,
+                 auto /*grantee_account*/,
+                 auto /*grantee_domain*/,
+                 auto opt_permissions) { return opt_permissions; })) {
+        granted_account_permissions = std::move(*opt_permissions);
       }
-      IROHA_ERROR_IF_NOT_GRANTABLE_SET(Grantable::kTransferMyAssets)
-    } else {
-      IROHA_ERROR_IF_NOT_SET(Role::kTransfer)
-    }
+
+      checkPermissions(creator_permissions,
+                       granted_account_permissions,
+                       Role::kRoot,
+                       Grantable::kTransferMyAssets);
+    } else
+      checkPermissions(creator_permissions, Role::kTransfer);
 
     // check if asset exists
-    status = common.get(fmtstrings::kAsset, domain_id, asset_name);
-    IROHA_ERROR_IF_NOT_FOUND(5)
+    forAsset(common,
+             domain_id,
+             asset_name,
+             [](auto /*asset*/, auto /*domain*/, auto /*precision*/) {},
+             kDbOperation::kGet,
+             StatusCheck::kMustExist);
 
-    status = common.get(fmtstrings::kSetting,
-                        iroha::ametsuchi::kMaxDescriptionSizeKey);
+    auto status = common.get(fmtstrings::kSetting,
+                             iroha::ametsuchi::kMaxDescriptionSizeKey);
+    canExist(status, [&] { return fmt::format("Max description size key"); });
+
     if (status.ok()) {
       uint64_t max_description_size;
       common.decode(max_description_size);
-      IROHA_ERROR_IF_CONDITION(
-          description.size() > max_description_size, 8, command.toString(), "")
-    } else if (not status.IsNotFound()) {
-      IROHA_ERROR_IF_NOT_OK()
+      if (description.size() > max_description_size)
+        throw IrohaDbError(23, fmt::format("Too big description"));
     }
   }
 
-  status = common.get(fmtstrings::kAccountAsset,
-                      source_domain_id,
-                      source_account_name,
-                      command.assetId());
-  IROHA_ERROR_IF_NOT_FOUND(6)
-  shared_model::interface::Amount source_balance(db_context_->value_buffer);
+  shared_model::interface::Amount source_balance(forAccountAssets(
+      common,
+      source_domain_id,
+      source_account_name,
+      command.assetId(),
+      [](auto /*account*/, auto /*domain*/, auto /*asset*/, auto opt_amount) {
+        assert(opt_amount);
+        return *opt_amount;
+      },
+      kDbOperation::kGet,
+      StatusCheck::kMustExist));
 
   source_balance -= amount;
-  IROHA_ERROR_IF_CONDITION(
-      source_balance.toStringRepr()[0] == 'N', 6, command.toString(), "")
+  if (source_balance.toStringRepr()[0] == 'N')
+    throw IrohaDbError(24, fmt::format("Not enough assets"));
 
-  uint64_t account_asset_size = 0;
-  status = common.get(fmtstrings::kAccountAssetSize,
-                      destination_domain_id,
-                      destination_account_name);
-  if (status.ok()) {
-    common.decode(account_asset_size);
-  } else if (not status.IsNotFound()) {
-    IROHA_ERROR_IF_NOT_OK()
-  }
+  uint64_t account_asset_size(forAccountAssetSize(
+      common,
+      destination_domain_id,
+      destination_account_name,
+      [](auto /*account*/, auto /*domain*/, auto opt_account_asset_size) {
+        if (opt_account_asset_size)
+          return *opt_account_asset_size;
+        return uint64_t(0ull);
+      }));
 
   shared_model::interface::Amount destination_balance(
       source_balance.precision());
-  status = common.get(fmtstrings::kAccountAsset,
-                      destination_domain_id,
-                      destination_account_name,
-                      command.assetId());
-  if (status.ok()) {
-    destination_balance =
-        shared_model::interface::Amount(db_context_->value_buffer);
-  } else if (status.IsNotFound()) {
+  if (auto opt_amount =
+          forAccountAssets(common,
+                           source_domain_id,
+                           source_account_name,
+                           command.assetId(),
+                           [](auto /*account*/,
+                              auto /*domain*/,
+                              auto /*asset*/,
+                              auto opt_amount) { return opt_amount; },
+                           kDbOperation::kGet,
+                           StatusCheck::kCanExist)) {
+    destination_balance = *opt_amount;
+  } else
     ++account_asset_size;
-  } else {
-    IROHA_ERROR_IF_NOT_OK()
-  }
 
   destination_balance += amount;
-  IROHA_ERROR_IF_CONDITION(
-      destination_balance.toStringRepr()[0] == 'N', 7, command.toString(), "")
+  if (destination_balance.toStringRepr()[0] == 'N')
+    throw IrohaDbError(25, fmt::format("Incorrect balance"));
 
-  db_context_->value_buffer.assign(source_balance.toStringRepr());
-  status = common.put(fmtstrings::kAccountAsset,
-                      source_domain_id,
-                      source_account_name,
-                      command.assetId());
-  IROHA_ERROR_IF_NOT_OK()
+  common.valueBuffer().assign(source_balance.toStringRepr());
+  forAccountAssets(common,
+                   source_domain_id,
+                   source_account_name,
+                   command.assetId(),
+                   [](auto /*account*/,
+                      auto /*domain*/,
+                      auto /*asset*/,
+                      auto /*opt_amount*/) {},
+                   kDbOperation::kPut);
 
-  db_context_->value_buffer.assign(destination_balance.toStringRepr());
-  status = common.put(fmtstrings::kAccountAsset,
-                      destination_domain_id,
-                      destination_account_name,
-                      command.assetId());
-  IROHA_ERROR_IF_NOT_OK()
+  common.valueBuffer().assign(destination_balance.toStringRepr());
+  forAccountAssets(common,
+                   destination_domain_id,
+                   destination_account_name,
+                   command.assetId(),
+                   [](auto /*account*/,
+                      auto /*domain*/,
+                      auto /*asset*/,
+                      auto /*opt_amount*/) {},
+                   kDbOperation::kPut);
 
   common.encode(account_asset_size);
-  status = common.put(fmtstrings::kAccountAssetSize,
-                      destination_domain_id,
-                      destination_account_name);
-  IROHA_ERROR_IF_NOT_OK()
+  forAccountAssetSize(
+      common,
+      destination_domain_id,
+      destination_account_name,
+      [](auto /*account*/, auto /*domain*/, auto /*opt_account_asset_size*/) {},
+      kDbOperation::kPut);
 
   return {};
 }
@@ -1212,14 +1259,13 @@ CommandResult RocksDbCommandExecutor::operator()(
     bool do_validation,
     shared_model::interface::RolePermissionSet const &creator_permissions) {
   RocksDbCommon common(db_context_);
-  rocksdb::Status status;
 
   auto &key = command.key();
   auto &value = command.value();
 
-  db_context_->value_buffer.assign(value);
-  status = common.put(fmtstrings::kSetting, key);
-  IROHA_ERROR_IF_NOT_OK()
+  common.valueBuffer().assign(value);
+  forSettings(
+      common, key, [](auto /*key*/, auto /*opt_value*/) {}, kDbOperation::kPut);
 
   return {};
 }
