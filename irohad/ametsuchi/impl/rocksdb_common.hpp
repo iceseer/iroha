@@ -466,20 +466,6 @@ namespace iroha::ametsuchi {
   }
 
   template <typename F>
-  inline void checkStatus(rocksdb::Status status, F &&op_formatter) {
-    if (status.IsNotFound())
-      throw IrohaDbError(
-          1,
-          fmt::format("{}. Was not found.", std::forward<F>(op_formatter)()));
-
-    if (!status.ok())
-      throw IrohaDbError(2,
-                         fmt::format("{}. Failed with status: {}.",
-                                     std::forward<F>(op_formatter)(),
-                                     status.ToString()));
-  }
-
-  template <typename F>
   inline void mustNotExist(rocksdb::Status status, F &&op_formatter) {
     if (status.IsNotFound())
       return;
@@ -498,7 +484,8 @@ namespace iroha::ametsuchi {
   inline void mustExist(rocksdb::Status status, F &&op_formatter) {
     if (status.IsNotFound())
       IrohaDbError(
-          14, fmt::format("{}. Not found.", std::forward<F>(op_formatter)()));
+          14,
+          fmt::format("{}. Was not found.", std::forward<F>(op_formatter)()));
 
     if (!status.ok())
       throw IrohaDbError(15,
@@ -513,7 +500,6 @@ namespace iroha::ametsuchi {
                           F &&op_formatter) {
     switch (op) {
       case StatusCheck::kAll:
-        return checkStatus(status, std::forward<F>(op_formatter));
       case StatusCheck::kMustExist:
         return mustExist(status, std::forward<F>(op_formatter));
       case StatusCheck::kMustNotExist:
@@ -524,18 +510,48 @@ namespace iroha::ametsuchi {
   }
 
   template <typename Common, typename F>
-  inline auto forAccount(Common &common,
-                         std::string_view domain,
-                         std::string_view account,
-                         F &&func) {
+  inline auto forQuorum(Common &common,
+                        std::string_view domain,
+                        std::string_view account,
+                        F &&func,
+                        kDbOperation op = kDbOperation::kGet,
+                        StatusCheck sc = StatusCheck::kAll) {
     assert(!domain.empty());
     assert(!account.empty());
 
-    checkStatus(common.get(fmtstrings::kQuorum, domain, account), [&] {
-      return fmt::format("Find account {}#{}", account, domain);
-    });
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kQuorum, domain, account)
+        : common.put(fmtstrings::kQuorum, domain, account);
 
-    return std::forward<F>(func)(common, domain, account);
+    std::optional<uint64_t> quorum;
+    if (op == kDbOperation::kGet && status.ok()) {
+      uint64_t _;
+      common.decode(_);
+      quorum = _;
+    }
+
+    checkStatus(status, sc, [&] {
+      return fmt::format("Account {}#{}", account, domain);
+    });
+    return std::forward<F>(func)(account, domain, quorum);
+  }
+
+  template <typename Common, typename F>
+  inline auto forAccount(Common &common,
+                         std::string_view domain,
+                         std::string_view account,
+                         F &&func,
+                         kDbOperation op = kDbOperation::kGet,
+                         StatusCheck sc = StatusCheck::kAll) {
+    return forQuorum(common,
+                     domain,
+                     account,
+                     [func{std::forward<F>(func)}](
+                         auto account, auto domain, auto /*quorum*/) mutable {
+                       return std::forward<F>(func)(account, domain);
+                     },
+                     op,
+                     sc);
   }
 
   template <typename Common, typename F>
@@ -550,8 +566,12 @@ namespace iroha::ametsuchi {
         : common.put(fmtstrings::kRole, role);
 
     checkStatus(status, sc, [&] { return fmt::format("Find role {}", role); });
-    return std::forward<F>(func)(
-        role, shared_model::interface::RolePermissionSet{common.valueBuffer()});
+
+    std::optional<shared_model::interface::RolePermissionSet> perm;
+    if (op == kDbOperation::kGet && status.ok())
+      perm = shared_model::interface::RolePermissionSet{common.valueBuffer()};
+
+    return std::forward<F>(func)(role, perm);
   }
 
   template <typename Common, typename F>
@@ -613,7 +633,28 @@ namespace iroha::ametsuchi {
       return fmt::format(
           "Signatory {} for account {}#{}", pubkey, account, domain);
     });
+
     return std::forward<F>(func)(account, domain, pubkey);
+  }
+
+  template <typename Common, typename F>
+  inline auto forDomain(Common &common,
+                        std::string_view domain,
+                        F &&func,
+                        kDbOperation op = kDbOperation::kGet,
+                        StatusCheck sc = StatusCheck::kAll) {
+    assert(!domain.empty());
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kDomain, domain)
+        : common.put(fmtstrings::kDomain, domain);
+
+    checkStatus(status, sc, [&] { return fmt::format("Domain {}", domain); });
+
+    std::optional<std::string> default_role;
+    if (op == kDbOperation::kGet && status.ok())
+      default_role = common.valueBuffer();
+
+    return std::forward<F>(func)(domain, default_role);
   }
 
   template <typename Common, typename F>
@@ -744,7 +785,7 @@ namespace iroha::ametsuchi {
     shared_model::interface::RolePermissionSet permissions;
     for (auto &role : roles)
       permissions |=
-          forRole(common, role, [](auto /*role*/, auto perm) { return perm; });
+          *forRole(common, role, [](auto /*role*/, auto perm) { return perm; });
 
     return permissions;
   }
