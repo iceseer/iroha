@@ -594,6 +594,29 @@ namespace iroha::ametsuchi {
   }
 
   template <typename Common, typename F>
+  inline auto forSignatory(Common &common,
+                           std::string_view domain,
+                           std::string_view account,
+                           std::string_view pubkey,
+                           F &&func,
+                           kDbOperation op = kDbOperation::kGet,
+                           StatusCheck sc = StatusCheck::kAll) {
+    assert(!domain.empty());
+    assert(!account.empty());
+    assert(!pubkey.empty());
+
+    auto status = op == kDbOperation::kGet
+        ? common.get(fmtstrings::kSignatory, domain, account, pubkey)
+        : common.put(fmtstrings::kSignatory, domain, account, pubkey);
+
+    checkStatus(status, sc, [&] {
+      return fmt::format(
+          "Signatory {} for account {}#{}", pubkey, account, domain);
+    });
+    return std::forward<F>(func)(account, domain, pubkey);
+  }
+
+  template <typename Common, typename F>
   inline auto forAccountAssetSize(Common &common,
                                   std::string_view domain,
                                   std::string_view account,

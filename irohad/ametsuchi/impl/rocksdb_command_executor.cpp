@@ -323,23 +323,20 @@ CommandResult RocksDbCommandExecutor::operator()(
                    Role::kAddSignatory,
                    Grantable::kAddMySignatory);
 
-  status = common.get(
-      fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
-  mustNotExist(status, [&] {
-    return fmt::format("Signatory {} for account {}#{}",
-                       command.pubkey(),
-                       account_name,
-                       domain_id);
-  });
+  forSignatory(common,
+               domain_id,
+               account_name,
+               command.pubkey(),
+               [](auto, auto, auto) {},
+               kDbOperation::kGet,
+               StatusCheck::kMustNotExist);
 
-  status = common.put(
-      fmtstrings::kSignatory, domain_id, account_name, command.pubkey());
-  checkStatus(status, [&] {
-    return fmt::format("Signatory {} for account {}#{}",
-                       command.pubkey(),
-                       account_name,
-                       domain_id);
-  });
+  forSignatory(common,
+               domain_id,
+               account_name,
+               command.pubkey(),
+               [](auto, auto, auto) {},
+               kDbOperation::kPut);
 
   return {};
 }
@@ -380,6 +377,7 @@ CommandResult RocksDbCommandExecutor::operator()(
       kDbOperation::kGet,
       StatusCheck::kMustExist);
 
+  common.valueBuffer() = "";
   forAccountRole(common,
                  domain_id,
                  account_name,
@@ -422,9 +420,8 @@ CommandResult RocksDbCommandExecutor::operator()(
   auto pubkey = command.pubkey();
   boost::algorithm::to_lower(pubkey);
 
-  if (do_validation) {
-    IROHA_ERROR_IF_NOT_SET(Role::kCreateAccount)
-  }
+  if (do_validation)
+    checkPermissions(creator_permissions, Role::kCreateAccount);
 
   // check if domain exists
   auto status = common.get(fmtstrings::kDomain, domain_id);
