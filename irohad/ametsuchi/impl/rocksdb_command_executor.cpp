@@ -255,7 +255,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                      Grantable::kAddMySignatory);
   }
 
-  forSignatory<kDbOperation::kGet, StatusCheck::kMustNotExist>(
+  forSignatory<kDbOperation::kGet, kDbEntry::kMustNotExist>(
       common, domain_id, account_name, command.pubkey(), [](auto, auto, auto) {
       });
 
@@ -284,10 +284,10 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, Role::kAppendRole);
 
   // check if account already has role
-  forAccountRole<kDbOperation::kGet, StatusCheck::kMustNotExist>(
+  forAccountRole<kDbOperation::kGet, kDbEntry::kMustNotExist>(
       common, domain_id, account_name, role_name, [](auto, auto, auto) {});
 
-  forRole<kDbOperation::kGet, StatusCheck::kMustExist>(
+  forRole<kDbOperation::kGet, kDbEntry::kMustExist>(
       common, role_name, [&](auto role, auto opt_permissions) {
         assert(opt_permissions);
         if (!opt_permissions->isSubsetOf(creator_permissions))
@@ -339,14 +339,13 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, Role::kCreateAccount);
 
   // check if domain exists
-  std::string default_role(
-      forDomain<kDbOperation::kGet, StatusCheck::kMustExist>(
-          common, domain_id, [](auto, auto opt_default_role) {
-            assert(opt_default_role);
-            return *opt_default_role;
-          }));
+  std::string default_role(forDomain<kDbOperation::kGet, kDbEntry::kMustExist>(
+      common, domain_id, [](auto, auto opt_default_role) {
+        assert(opt_default_role);
+        return *opt_default_role;
+      }));
 
-  forRole<kDbOperation::kGet, StatusCheck::kMustExist>(
+  forRole<kDbOperation::kGet, kDbEntry::kMustExist>(
       common, default_role, [&](auto /*role*/, auto opt_permissions) {
         assert(opt_permissions);
         if (!opt_permissions->isSubsetOf(creator_permissions))
@@ -363,7 +362,7 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   // check if account already exists
   if (do_validation)
-    forAccount<kDbOperation::kGet, StatusCheck::kMustNotExist>(
+    forAccount<kDbOperation::kGet, kDbEntry::kMustNotExist>(
         common, domain_id, account_name, [](auto /*account*/, auto /*domain*/) {
         });
 
@@ -401,14 +400,14 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, Role::kCreateAsset);
 
     // check if asset already exists
-    forAsset<kDbOperation::kGet, StatusCheck::kMustNotExist>(
+    forAsset<kDbOperation::kGet, kDbEntry::kMustNotExist>(
         common,
         domain_id,
         asset_name,
         [](auto /*asset*/, auto /*domain*/, auto /*precision*/) {});
 
     // check if domain exists
-    forDomain<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forDomain<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, domain_id, [](auto /*domain*/, auto /*opt_default_role*/) {});
   }
 
@@ -439,11 +438,11 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, Role::kCreateDomain);
 
     // check if domain already exists
-    forDomain<kDbOperation::kGet, StatusCheck::kMustNotExist>(
+    forDomain<kDbOperation::kGet, kDbEntry::kMustNotExist>(
         common, domain_id, [](auto /*domain*/, auto /*opt_default_role*/) {});
 
     // check if role exists
-    forRole<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forRole<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, default_role, [&](auto /*role*/, auto /*opt_permissions*/) {});
   }
 
@@ -475,7 +474,7 @@ CommandResult RocksDbCommandExecutor::operator()(
       throw IrohaDbError(18, fmt::format("Not enough permissions."));
 
     // check if role already exists
-    forRole<kDbOperation::kGet, StatusCheck::kMustNotExist>(
+    forRole<kDbOperation::kGet, kDbEntry::kMustNotExist>(
         common, role_name, [&](auto /*role*/, auto /*opt_permissions*/) {});
   }
 
@@ -503,11 +502,11 @@ CommandResult RocksDbCommandExecutor::operator()(
   if (do_validation)
     checkPermissions(creator_permissions, Role::kDetachRole);
 
-  forRole<kDbOperation::kGet, StatusCheck::kMustExist>(
+  forRole<kDbOperation::kGet, kDbEntry::kMustExist>(
       common, role_name, [&](auto /*role*/, auto /*opt_permissions*/) {});
 
   if (do_validation)
-    forAccountRole<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAccountRole<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, domain_id, account_name, role_name, [](auto, auto, auto) {});
 
   forAccountRole<kDbOperation::kDel>(
@@ -541,7 +540,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, required_perm);
 
     // check if account exists
-    forAccount<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAccount<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, domain_id, account_name, [](auto /*account*/, auto /*domain*/) {
         });
   }
@@ -567,7 +566,7 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   granted_account_permissions.set(granted_perm);
   common.valueBuffer().assign(granted_account_permissions.toBitstring());
-  forGrantablePermissions<kDbOperation::kPut, StatusCheck::kAll>(
+  forGrantablePermissions<kDbOperation::kPut, kDbEntry::kAll>(
       common,
       domain_id,
       account_name,
@@ -596,7 +595,7 @@ CommandResult RocksDbCommandExecutor::operator()(
   if (do_validation) {
     checkPermissions(creator_permissions, Role::kRemovePeer);
 
-    forPeerAddress<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forPeerAddress<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, command.pubkey(), [](auto /*pubkey*/, auto /*opt_address*/) {});
   }
 
@@ -646,7 +645,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                      Role::kRemoveSignatory,
                      Grantable::kRemoveMySignatory);
 
-    forSignatory<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forSignatory<kDbOperation::kGet, kDbEntry::kMustExist>(
         common,
         domain_id,
         account_name,
@@ -686,7 +685,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, required_perm);
 
     // check if account exists
-    forAccount<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAccount<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, domain_id, account_name, [](auto /*account*/, auto /*domain*/) {
         });
   }
@@ -712,7 +711,7 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   granted_account_permissions.unset(revoked_perm);
   common.valueBuffer().assign(granted_account_permissions.toBitstring());
-  forGrantablePermissions<kDbOperation::kPut, StatusCheck::kAll>(
+  forGrantablePermissions<kDbOperation::kPut, kDbEntry::kAll>(
       common,
       domain_id,
       account_name,
@@ -768,7 +767,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     }
 
     // check if account exists
-    forAccount<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAccount<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, domain_id, account_name, [](auto /*account*/, auto /*domain*/) {
         });
   }
@@ -811,7 +810,7 @@ CommandResult RocksDbCommandExecutor::operator()(
     checkPermissions(creator_permissions, Role::kSetQuorum);
 
     // check if account exists
-    forAccount<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAccount<kDbOperation::kGet, kDbEntry::kMustExist>(
         common, domain_id, account_name, [](auto /*account*/, auto /*domain*/) {
         });
 
@@ -882,7 +881,7 @@ CommandResult RocksDbCommandExecutor::operator()(
                }));
 
   if (auto opt_amount =
-          forAccountAssets<kDbOperation::kGet, StatusCheck::kCanExist>(
+          forAccountAssets<kDbOperation::kGet, kDbEntry::kCanExist>(
               common,
               creator_domain_id,
               creator_account_name,
@@ -961,7 +960,7 @@ CommandResult RocksDbCommandExecutor::operator()(
 
   if (do_validation) {
     // check if destination account exists
-    forAccount<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAccount<kDbOperation::kGet, kDbEntry::kMustExist>(
         common,
         destination_domain_id,
         destination_account_name,
@@ -975,7 +974,7 @@ CommandResult RocksDbCommandExecutor::operator()(
 
     if (command.srcAccountId() != creator_account_id) {
       // check if source account exists
-      forAccount<kDbOperation::kGet, StatusCheck::kMustExist>(
+      forAccount<kDbOperation::kGet, kDbEntry::kMustExist>(
           common,
           source_domain_id,
           source_account_name,
@@ -1004,7 +1003,7 @@ CommandResult RocksDbCommandExecutor::operator()(
       checkPermissions(creator_permissions, Role::kTransfer);
 
     // check if asset exists
-    forAsset<kDbOperation::kGet, StatusCheck::kMustExist>(
+    forAsset<kDbOperation::kGet, kDbEntry::kMustExist>(
         common,
         domain_id,
         asset_name,
@@ -1023,7 +1022,7 @@ CommandResult RocksDbCommandExecutor::operator()(
   }
 
   shared_model::interface::Amount source_balance(
-      forAccountAssets<kDbOperation::kGet, StatusCheck::kMustExist>(
+      forAccountAssets<kDbOperation::kGet, kDbEntry::kMustExist>(
           common,
           source_domain_id,
           source_account_name,
@@ -1053,7 +1052,7 @@ CommandResult RocksDbCommandExecutor::operator()(
   shared_model::interface::Amount destination_balance(
       source_balance.precision());
   if (auto opt_amount =
-          forAccountAssets<kDbOperation::kGet, StatusCheck::kCanExist>(
+          forAccountAssets<kDbOperation::kGet, kDbEntry::kCanExist>(
               common,
               source_domain_id,
               source_account_name,

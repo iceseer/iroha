@@ -434,7 +434,7 @@ namespace iroha::ametsuchi {
   };
 
   enum struct kDbOperation { kGet, kPut, kDel };
-  enum struct StatusCheck { kAll, kMustExist, kMustNotExist, kCanExist };
+  enum struct kDbEntry { kAll, kMustExist, kMustNotExist, kCanExist };
 
   template <typename Common, typename F, typename S, typename... Args>
   inline auto enumerateKeys(Common &rdb,
@@ -511,20 +511,23 @@ namespace iroha::ametsuchi {
                                    status.ToString()));
   }
 
-  template <StatusCheck kSc, typename F>
-  static void checkStatus(rocksdb::Status status,
-                          F &&op_formatter) {
-    if constexpr (kSc == StatusCheck::kAll || kSc == StatusCheck::kMustExist)
+  template <kDbEntry kSc, typename F>
+  static void checkStatus(rocksdb::Status status, F &&op_formatter) {
+    if constexpr (kSc == kDbEntry::kAll || kSc == kDbEntry::kMustExist)
       return mustExist(status, std::forward<F>(op_formatter));
-    else if constexpr (kSc == StatusCheck::kMustNotExist)
+    else if constexpr (kSc == kDbEntry::kMustNotExist)
       return mustNotExist(status, std::forward<F>(op_formatter));
-    else if constexpr (kSc == StatusCheck::kCanExist)
+    else if constexpr (kSc == kDbEntry::kCanExist)
       return canExist(status, std::forward<F>(op_formatter));
 
     assert(!"Unexpected status check value");
   }
 
-  template <kDbOperation kOp, StatusCheck kSc, typename Common, typename F, typename... Args>
+  template <kDbOperation kOp,
+            kDbEntry kSc,
+            typename Common,
+            typename F,
+            typename... Args>
   rocksdb::Status executeOperation(Common &common,
                                    F &&op_formatter,
                                    Args &&... args) {
@@ -542,7 +545,10 @@ namespace iroha::ametsuchi {
     return status;
   }
 
-  template <kDbOperation kOp = kDbOperation::kGet, StatusCheck kSc = StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forQuorum(Common &common,
                         std::string_view domain,
                         std::string_view account,
@@ -568,99 +574,112 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, std::move(quorum));
   }
 
-  template <kDbOperation kOp = kDbOperation::kGet, StatusCheck kSc = StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forAccount(Common &common,
                          std::string_view domain,
                          std::string_view account,
                          F &&func) {
-    return forQuorum<kOp, kSc>(common,
-                     domain,
-                     account,
-                     [func{std::forward<F>(func)}](
-                         auto account, auto domain, auto /*quorum*/) mutable {
-                       return std::forward<F>(func)(account, domain);
-                     });
+    return forQuorum<kOp, kSc>(
+        common,
+        domain,
+        account,
+        [func{std::forward<F>(func)}](
+            auto account, auto domain, auto /*quorum*/) mutable {
+          return std::forward<F>(func)(account, domain);
+        });
   }
 
-  template <kDbOperation kOp = kDbOperation::kGet, StatusCheck kSc = StatusCheck::kAll, typename Common, typename F>
-  inline auto forRole(Common &common,
-                      std::string_view role,
-                      F &&func) {
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
+  inline auto forRole(Common &common, std::string_view role, F &&func) {
     assert(!role.empty());
 
-    auto status =
-        executeOperation<kOp, kSc>(common,
-                         [&] { return fmt::format("Find role {}", role); },
-                         fmtstrings::kRole,
-                         role);
+    auto status = executeOperation<kOp, kSc>(
+        common,
+        [&] { return fmt::format("Find role {}", role); },
+        fmtstrings::kRole,
+        role);
 
     std::optional<shared_model::interface::RolePermissionSet> perm;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      perm = shared_model::interface::RolePermissionSet{common.valueBuffer()};
+        perm = shared_model::interface::RolePermissionSet{common.valueBuffer()};
 
     return std::forward<F>(func)(role, std::move(perm));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
-  inline auto forSettings(Common &common,
-                          std::string_view key,
-                          F &&func) {
-    auto status =
-        executeOperation<kOp, kSc>(common,
-                         [&] { return fmt::format("Setting {}", key); },
-                         fmtstrings::kSetting,
-                         key);
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
+  inline auto forSettings(Common &common, std::string_view key, F &&func) {
+    auto status = executeOperation<kOp, kSc>(
+        common,
+        [&] { return fmt::format("Setting {}", key); },
+        fmtstrings::kSetting,
+        key);
 
     std::optional<std::string> value;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      value = common.valueBuffer();
+        value = common.valueBuffer();
 
     return std::forward<F>(func)(key, std::move(value));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forPeerAddress(Common &common,
                              std::string_view pubkey,
                              F &&func) {
     assert(!pubkey.empty());
 
-    auto status =
-        executeOperation<kOp, kSc>(common,
-                         [&] { return fmt::format("Peer {} address", pubkey); },
-                         fmtstrings::kPeerAddress,
-                         pubkey);
+    auto status = executeOperation<kOp, kSc>(
+        common,
+        [&] { return fmt::format("Peer {} address", pubkey); },
+        fmtstrings::kPeerAddress,
+        pubkey);
 
     std::optional<std::string> address;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      address = common.valueBuffer();
+        address = common.valueBuffer();
 
     return std::forward<F>(func)(pubkey, std::move(address));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
-  inline auto forPeerTLS(Common &common,
-                         std::string_view pubkey,
-                         F &&func) {
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
+  inline auto forPeerTLS(Common &common, std::string_view pubkey, F &&func) {
     assert(!pubkey.empty());
 
-    auto status =
-        executeOperation<kOp, kSc>(common,
-                         [&] { return fmt::format("Peer {} TLS", pubkey); },
-                         fmtstrings::kPeerTLS,
-                         pubkey);
+    auto status = executeOperation<kOp, kSc>(
+        common,
+        [&] { return fmt::format("Peer {} TLS", pubkey); },
+        fmtstrings::kPeerTLS,
+        pubkey);
 
     std::optional<std::string> tls;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      tls = common.valueBuffer();
+        tls = common.valueBuffer();
 
     return std::forward<F>(func)(pubkey, std::move(tls));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forAsset(Common &common,
                        std::string_view domain,
                        std::string_view asset,
@@ -678,15 +697,18 @@ namespace iroha::ametsuchi {
     std::optional<uint64_t> precision;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok()) {
-      uint64_t _;
-      common.decode(_);
-      precision = _;
-    }
+        uint64_t _;
+        common.decode(_);
+        precision = _;
+      }
 
     return std::forward<F>(func)(asset, domain, std::move(precision));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forAccountRole(Common &common,
                              std::string_view domain,
                              std::string_view account,
@@ -710,7 +732,10 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, role);
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forAccountDetail(Common &common,
                                std::string_view domain,
                                std::string_view account,
@@ -744,7 +769,7 @@ namespace iroha::ametsuchi {
     std::optional<std::string> value;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      value = common.valueBuffer();
+        value = common.valueBuffer();
 
     return std::forward<F>(func)(account,
                                  domain,
@@ -754,7 +779,10 @@ namespace iroha::ametsuchi {
                                  std::move(value));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
   inline auto forSignatory(Common &common,
                            std::string_view domain,
                            std::string_view account,
@@ -778,27 +806,31 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, pubkey);
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kAll, typename Common, typename F>
-  inline auto forDomain(Common &common,
-                        std::string_view domain,
-                        F &&func) {
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kAll,
+            typename Common,
+            typename F>
+  inline auto forDomain(Common &common, std::string_view domain, F &&func) {
     assert(!domain.empty());
 
-    auto status =
-        executeOperation<kOp, kSc>(common,
-                         [&] { return fmt::format("Domain {}", domain); },
-                         fmtstrings::kDomain,
-                         domain);
+    auto status = executeOperation<kOp, kSc>(
+        common,
+        [&] { return fmt::format("Domain {}", domain); },
+        fmtstrings::kDomain,
+        domain);
 
     std::optional<std::string> default_role;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      default_role = common.valueBuffer();
+        default_role = common.valueBuffer();
 
     return std::forward<F>(func)(domain, std::move(default_role));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kCanExist, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kCanExist,
+            typename Common,
+            typename F>
   inline auto forAccountAssetSize(Common &common,
                                   std::string_view domain,
                                   std::string_view account,
@@ -818,15 +850,18 @@ namespace iroha::ametsuchi {
     std::optional<uint64_t> account_asset_size;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok()) {
-      uint64_t _;
-      common.decode(_);
-      account_asset_size = _;
-    }
+        uint64_t _;
+        common.decode(_);
+        account_asset_size = _;
+      }
     return std::forward<F>(func)(
         account, domain, std::move(account_asset_size));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kCanExist, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kCanExist,
+            typename Common,
+            typename F>
   inline auto forAccountAssets(Common &common,
                                std::string_view domain,
                                std::string_view account,
@@ -849,12 +884,15 @@ namespace iroha::ametsuchi {
     std::optional<shared_model::interface::Amount> amount;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      amount = shared_model::interface::Amount(common.valueBuffer());
+        amount = shared_model::interface::Amount(common.valueBuffer());
 
     return std::forward<F>(func)(account, domain, asset, std::move(amount));
   }
 
-  template <kDbOperation kOp= kDbOperation::kGet, StatusCheck kSc= StatusCheck::kCanExist, typename Common, typename F>
+  template <kDbOperation kOp = kDbOperation::kGet,
+            kDbEntry kSc = kDbEntry::kCanExist,
+            typename Common,
+            typename F>
   inline auto forGrantablePermissions(Common &common,
                                       std::string_view domain,
                                       std::string_view account,
@@ -885,8 +923,8 @@ namespace iroha::ametsuchi {
     std::optional<shared_model::interface::GrantablePermissionSet> permissions;
     if constexpr (kOp == kDbOperation::kGet)
       if (status.ok())
-      permissions =
-          shared_model::interface::GrantablePermissionSet{common.valueBuffer()};
+        permissions = shared_model::interface::GrantablePermissionSet{
+            common.valueBuffer()};
 
     return std::forward<F>(func)(account,
                                  domain,
