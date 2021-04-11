@@ -293,12 +293,23 @@ namespace {
 
 namespace iroha::ametsuchi {
 
+  /**
+   * RocksDB transaction context.
+   */
   struct RocksDBContext {
+    /// RocksDB transaction
     std::unique_ptr<rocksdb::Transaction> transaction;
+
+    /// Buffer for key data
     fmt::memory_buffer key_buffer;
+
+    /// Buffer for value data
     std::string value_buffer;
   };
 
+  /**
+   * Port to provide access to RocksDB instance.
+   */
   struct RocksDBPort : std::enable_shared_from_this<RocksDBPort> {
     RocksDBPort(RocksDBPort const &) = delete;
     RocksDBPort &operator=(RocksDBPort const &) = delete;
@@ -342,36 +353,44 @@ namespace iroha::ametsuchi {
     }
   };
 
-  template <typename Tx>
+  /**
+   * Base functions to interact with RocksDB data.
+   */
   class RocksDbCommon {
     inline auto &transaction() {
       return tx_context_->transaction;
     }
 
    public:
-    RocksDbCommon(Tx tx_context) : tx_context_(std::move(tx_context)) {
+    RocksDbCommon(std::shared_ptr<RocksDBContext> tx_context)
+        : tx_context_(std::move(tx_context)) {
       assert(tx_context_);
     }
 
+    /// Get value buffer
     inline auto &valueBuffer() {
       return tx_context_->value_buffer;
     }
 
+    /// Get key buffer
     inline auto &keyBuffer() {
       return tx_context_->key_buffer;
     }
 
+    /// Encode number into @see valueBuffer
     auto encode(uint64_t number) {
       valueBuffer().clear();
       fmt::format_to(std::back_inserter(valueBuffer()), kValue, number);
     }
 
+    /// Decode number from @see valueBuffer
     auto decode(uint64_t &number) {
       return std::from_chars(valueBuffer().data(),
                              valueBuffer().data() + valueBuffer().size(),
                              number);
     }
 
+    /// Read data from database to @see valueBuffer
     template <typename S, typename... Args>
     auto get(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
@@ -384,6 +403,7 @@ namespace iroha::ametsuchi {
           &valueBuffer());
     }
 
+    /// Put data from @see valueBuffer to database
     template <typename S, typename... Args>
     auto put(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
@@ -394,6 +414,7 @@ namespace iroha::ametsuchi {
           valueBuffer());
     }
 
+    /// Delete database entry by the key
     template <typename S, typename... Args>
     auto del(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
@@ -403,6 +424,7 @@ namespace iroha::ametsuchi {
           std::string_view(keyBuffer().data(), keyBuffer().size()));
     }
 
+    /// Searches for the first key that matches a prefix
     template <typename S, typename... Args>
     auto seek(S const &fmtstring, Args &&... args) {
       keyBuffer().clear();
@@ -415,6 +437,8 @@ namespace iroha::ametsuchi {
       return it;
     }
 
+    /// Iterate over all the keys that matches a prefix and call lambda
+    /// with key-value. If lambda-callback returns false than loop breaks
     template <typename F, typename S, typename... Args>
     auto enumerate(F &&func, S const &fmtstring, Args &&... args) {
       auto it = seek(fmtstring, std::forward<Args>(args)...);
@@ -430,14 +454,35 @@ namespace iroha::ametsuchi {
     }
 
    private:
-    Tx tx_context_;
+    std::shared_ptr<RocksDBContext> tx_context_;
   };
 
-  enum struct kDbOperation { kGet, kPut, kDel };
-  enum struct kDbEntry { kAll, kMustExist, kMustNotExist, kCanExist };
+  /**
+   * Supported operations.
+   */
+  enum struct kDbOperation {
+    kGet,    /// read the value by the key
+    kCheck,  /// check the entry exists by the key
+    kPut,    /// put the value with the key
+    kDel     /// delete entry by the key
+  };
 
-  template <typename Common, typename F, typename S, typename... Args>
-  inline auto enumerateKeys(Common &rdb,
+  /**
+   * DB operation result assertion. If the result is not matches the assertion
+   * than error will be generated
+   */
+  enum struct kDbEntry {
+    kAll,           /// entry must exist and data must be accessible
+    kMustExist,     /// entry must exist and data must be accessible
+    kMustNotExist,  /// entry must NOT exist. If it exist than error will be
+                    /// generated
+    kCanExist  /// entry can exist or not. kDbOperation::kGet will return data
+               /// only if present, otherwise null-data
+  };
+
+  /// Enumerating through all the keys matched to prefix without reading value
+  template <typename F, typename S, typename... Args>
+  inline auto enumerateKeys(RocksDbCommon &rdb,
                             F &&func,
                             S const &strformat,
                             Args &&... args) {
@@ -453,8 +498,9 @@ namespace iroha::ametsuchi {
         std::forward<Args>(args)...);
   }
 
-  template <typename Common, typename F, typename S, typename... Args>
-  inline auto enumerateKeysAndValues(Common &rdb,
+  /// Enumerating through all the keys matched to prefix and read the value
+  template <typename F, typename S, typename... Args>
+  inline auto enumerateKeysAndValues(RocksDbCommon &rdb,
                                      F &&func,
                                      S const &strformat,
                                      Args &&... args) {
@@ -519,20 +565,16 @@ namespace iroha::ametsuchi {
       return mustNotExist(status, std::forward<F>(op_formatter));
     else if constexpr (kSc == kDbEntry::kCanExist)
       return canExist(status, std::forward<F>(op_formatter));
-
-    assert(!"Unexpected status check value");
+    else
+      assert(!"Unexpected status check value");
   }
 
-  template <kDbOperation kOp,
-            kDbEntry kSc,
-            typename Common,
-            typename F,
-            typename... Args>
-  rocksdb::Status executeOperation(Common &common,
+  template <kDbOperation kOp, kDbEntry kSc, typename F, typename... Args>
+  rocksdb::Status executeOperation(RocksDbCommon &common,
                                    F &&op_formatter,
                                    Args &&... args) {
     rocksdb::Status status;
-    if constexpr (kOp == kDbOperation::kGet)
+    if constexpr (kOp == kDbOperation::kGet || kOp == kDbOperation::kCheck)
       status = common.get(std::forward<Args>(args)...);
     else if constexpr (kOp == kDbOperation::kPut)
       status = common.put(std::forward<Args>(args)...);
@@ -545,11 +587,21 @@ namespace iroha::ametsuchi {
     return status;
   }
 
+  /**
+   * Access to account quorum file.
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forQuorum(Common &common,
+  inline auto forQuorum(RocksDbCommon &common,
                         std::string_view domain,
                         std::string_view account,
                         F &&func) {
@@ -574,11 +626,21 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, std::move(quorum));
   }
 
+  /**
+   * Access to account folder
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forAccount(Common &common,
+  inline auto forAccount(RocksDbCommon &common,
                          std::string_view domain,
                          std::string_view account,
                          F &&func) {
@@ -592,11 +654,20 @@ namespace iroha::ametsuchi {
         });
   }
 
+  /**
+   * Access to role file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param role id
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forRole(Common &common, std::string_view role, F &&func) {
+  inline auto forRole(RocksDbCommon &common, std::string_view role, F &&func) {
     assert(!role.empty());
 
     auto status = executeOperation<kOp, kSc>(
@@ -613,11 +684,22 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(role, std::move(perm));
   }
 
+  /**
+   * Access to setting file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param key setting name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forSettings(Common &common, std::string_view key, F &&func) {
+  inline auto forSettings(RocksDbCommon &common,
+                          std::string_view key,
+                          F &&func) {
     auto status = executeOperation<kOp, kSc>(
         common,
         [&] { return fmt::format("Setting {}", key); },
@@ -632,11 +714,20 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(key, std::move(value));
   }
 
+  /**
+   * Access to peer address file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param pubkey public key of the peer
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forPeerAddress(Common &common,
+  inline auto forPeerAddress(RocksDbCommon &common,
                              std::string_view pubkey,
                              F &&func) {
     assert(!pubkey.empty());
@@ -655,11 +746,22 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(pubkey, std::move(address));
   }
 
+  /**
+   * Access to peer TLS file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param pubkey is a public key of the peer
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forPeerTLS(Common &common, std::string_view pubkey, F &&func) {
+  inline auto forPeerTLS(RocksDbCommon &common,
+                         std::string_view pubkey,
+                         F &&func) {
     assert(!pubkey.empty());
 
     auto status = executeOperation<kOp, kSc>(
@@ -676,11 +778,21 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(pubkey, std::move(tls));
   }
 
+  /**
+   * Access to asset file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain is
+   * @param asset name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forAsset(Common &common,
+  inline auto forAsset(RocksDbCommon &common,
                        std::string_view domain,
                        std::string_view asset,
                        F &&func) {
@@ -705,11 +817,22 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(asset, domain, std::move(precision));
   }
 
+  /**
+   * Access to account role file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param role id
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forAccountRole(Common &common,
+  inline auto forAccountRole(RocksDbCommon &common,
                              std::string_view domain,
                              std::string_view account,
                              std::string_view role,
@@ -732,11 +855,24 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, role);
   }
 
+  /**
+   * Access to account details file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param creator_domain id
+   * @param creator_account name
+   * @param key name of the details entry
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forAccountDetail(Common &common,
+  inline auto forAccountDetail(RocksDbCommon &common,
                                std::string_view domain,
                                std::string_view account,
                                std::string_view creator_domain,
@@ -779,11 +915,22 @@ namespace iroha::ametsuchi {
                                  std::move(value));
   }
 
+  /**
+   * Access to account signatory file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param pubkey public key of the signatory
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forSignatory(Common &common,
+  inline auto forSignatory(RocksDbCommon &common,
                            std::string_view domain,
                            std::string_view account,
                            std::string_view pubkey,
@@ -806,11 +953,22 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, pubkey);
   }
 
+  /**
+   * Access to domain file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kAll,
-            typename Common,
             typename F>
-  inline auto forDomain(Common &common, std::string_view domain, F &&func) {
+  inline auto forDomain(RocksDbCommon &common,
+                        std::string_view domain,
+                        F &&func) {
     assert(!domain.empty());
 
     auto status = executeOperation<kOp, kSc>(
@@ -827,11 +985,21 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(domain, std::move(default_role));
   }
 
+  /**
+   * Access to account size file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kCanExist,
-            typename Common,
             typename F>
-  inline auto forAccountAssetSize(Common &common,
+  inline auto forAccountAssetSize(RocksDbCommon &common,
                                   std::string_view domain,
                                   std::string_view account,
                                   F &&func) {
@@ -858,11 +1026,22 @@ namespace iroha::ametsuchi {
         account, domain, std::move(account_asset_size));
   }
 
+  /**
+   * Access to account assets file
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param asset name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kCanExist,
-            typename Common,
             typename F>
-  inline auto forAccountAssets(Common &common,
+  inline auto forAccountAssets(RocksDbCommon &common,
                                std::string_view domain,
                                std::string_view account,
                                std::string_view asset,
@@ -889,11 +1068,23 @@ namespace iroha::ametsuchi {
     return std::forward<F>(func)(account, domain, asset, std::move(amount));
   }
 
+  /**
+   * Access to account grantable permissions
+   * @tparam kOp @see kDbOperation
+   * @tparam kSc @see kDbEntry
+   * @tparam F callback with operation result
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @param grantee_domain id
+   * @param grantee_account name
+   * @param func callback with the result
+   * @return determined by the callback
+   */
   template <kDbOperation kOp = kDbOperation::kGet,
             kDbEntry kSc = kDbEntry::kCanExist,
-            typename Common,
             typename F>
-  inline auto forGrantablePermissions(Common &common,
+  inline auto forGrantablePermissions(RocksDbCommon &common,
                                       std::string_view domain,
                                       std::string_view account,
                                       std::string_view grantee_domain,
@@ -933,9 +1124,17 @@ namespace iroha::ametsuchi {
                                  std::move(permissions));
   }
 
-  template <typename Common>
+  /**
+   * Get all permissions for the account
+   * @param common @see RocksDbCommon
+   * @param domain id
+   * @param account name
+   * @return permission set for the account
+   */
   inline shared_model::interface::RolePermissionSet accountPermissions(
-      Common &common, std::string_view domain, std::string_view account) {
+      RocksDbCommon &common,
+      std::string_view domain,
+      std::string_view account) {
     assert(!domain.empty());
     assert(!account.empty());
 
